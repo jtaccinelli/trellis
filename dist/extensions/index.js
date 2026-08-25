@@ -1,27 +1,64 @@
 // extensions/components/managing-domains.ts
+import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import {
+  Container,
+  HStack,
   matchesKey,
+  Spacer,
   truncateToWidth,
   wrapTextWithAnsi
 } from "@earendil-works/pi-tui";
-var ManagingDomainsComponent = class {
-  domains;
-  done;
-  requestRender;
-  selectedIndex;
+var TitleComponent = class {
+  constructor(theme) {
+    this.theme = theme;
+  }
   theme;
-  constructor(options) {
-    this.domains = options.domains;
-    this.done = options.done;
-    this.requestRender = options.requestRender;
+  invalidate() {
+  }
+  render(width) {
+    return [
+      truncateToWidth(
+        this.theme.fg("accent", this.theme.bold("Managing domains")),
+        width
+      )
+    ];
+  }
+};
+var HelpComponent = class {
+  constructor(theme) {
+    this.theme = theme;
+  }
+  theme;
+  invalidate() {
+  }
+  render(width) {
+    return [
+      truncateToWidth(
+        this.theme.fg(
+          "dim",
+          "\u2191/\u2193 or j/k navigate \xB7 e edit remit \xB7 d delete \xB7 q close"
+        ),
+        width
+      )
+    ];
+  }
+};
+var DomainListComponent = class {
+  constructor(domains, initialSelectedIndex, theme, requestRender) {
+    this.domains = domains;
+    this.theme = theme;
+    this.requestRender = requestRender;
     this.selectedIndex = Math.max(
       0,
-      Math.min(
-        options.initialSelectedIndex ?? 0,
-        options.domains.length - 1
-      )
+      Math.min(initialSelectedIndex, domains.length - 1)
     );
-    this.theme = options.theme;
+  }
+  domains;
+  theme;
+  requestRender;
+  selectedIndex;
+  getSelectedDomain() {
+    return this.domains[this.selectedIndex];
   }
   handleInput(data) {
     if (matchesKey(data, "up") || matchesKey(data, "k")) {
@@ -37,12 +74,123 @@ var ManagingDomainsComponent = class {
       this.requestRender();
       return;
     }
+  }
+  invalidate() {
+  }
+  render(width) {
+    if (this.domains.length === 0) {
+      return [truncateToWidth(this.theme.fg("dim", "No domains"), width)];
+    }
+    const lines = [];
+    for (let index = 0; index < this.domains.length; index++) {
+      const item = this.domains[index];
+      const isSelected = index === this.selectedIndex;
+      const marker = isSelected ? this.theme.fg("accent", "\u203A ") : "  ";
+      const label = isSelected ? this.theme.fg("accent", this.theme.bold(item.name)) : this.theme.fg("text", item.name);
+      lines.push(truncateToWidth(`${marker}${label}`, width));
+    }
+    return lines;
+  }
+};
+var DomainDetailsComponent = class {
+  constructor(getDomain, theme) {
+    this.getDomain = getDomain;
+    this.theme = theme;
+  }
+  getDomain;
+  theme;
+  invalidate() {
+  }
+  render(width) {
+    const domain = this.getDomain();
+    const lines = [];
+    if (!domain) {
+      lines.push(truncateToWidth(this.theme.fg("dim", "No domain selected."), width));
+      return lines;
+    }
+    lines.push(
+      truncateToWidth(this.theme.fg("accent", this.theme.bold(domain.name)), width)
+    );
+    lines.push(
+      truncateToWidth(this.theme.fg("muted", `id: ${domain.id}`), width)
+    );
+    lines.push("");
+    lines.push(truncateToWidth(this.theme.fg("muted", "Description"), width));
+    lines.push(...wrapTextWithAnsi(domain.description, width));
+    lines.push("");
+    lines.push(truncateToWidth(this.theme.fg("muted", "Remit"), width));
+    lines.push(...wrapTextWithAnsi(domain.remit, width));
+    lines.push("");
+    lines.push(truncateToWidth(this.theme.fg("muted", "Exclusions"), width));
+    if (domain.exclusions.length === 0) {
+      lines.push(truncateToWidth(this.theme.fg("dim", "None"), width));
+    } else {
+      for (const exclusion of domain.exclusions) {
+        lines.push(
+          truncateToWidth(`\u2022 ${exclusion}`, width)
+        );
+      }
+    }
+    return lines;
+  }
+};
+var ManagingDomainsComponent = class extends Container {
+  done;
+  list;
+  constructor(options) {
+    super();
+    this.done = options.done;
+    this.list = new DomainListComponent(
+      options.domains,
+      options.initialSelectedIndex ?? 0,
+      options.theme,
+      options.requestRender
+    );
+    const details = new DomainDetailsComponent(
+      () => this.list.getSelectedDomain(),
+      options.theme
+    );
+    this.addChild(new Spacer(1));
+    this.addChild(
+      new DynamicBorder((s) => options.theme.fg("accent", s))
+    );
+    this.addChild(new TitleComponent(options.theme));
+    this.addChild(new Spacer(1));
+    this.addChild(
+      new HStack(
+        [
+          {
+            component: this.list,
+            minSize: 28,
+            maxSize: 40,
+            grow: 0,
+            shrink: 1
+          },
+          {
+            component: details,
+            minSize: 20,
+            grow: 1,
+            shrink: 1
+          }
+        ],
+        { gap: 1, align: "stretch" }
+      )
+    );
+    this.addChild(new Spacer(1));
+    this.addChild(new HelpComponent(options.theme));
+    this.addChild(
+      new DynamicBorder((s) => options.theme.fg("accent", s))
+    );
+  }
+  handleInput(data) {
     if (matchesKey(data, "q") || matchesKey(data, "escape")) {
       this.done({ kind: "close" });
       return;
     }
-    const domain = this.domains[this.selectedIndex];
-    if (!domain) return;
+    const domain = this.list.getSelectedDomain();
+    if (!domain) {
+      return;
+    }
     if (matchesKey(data, "d")) {
       this.done({ kind: "delete", domain });
       return;
@@ -51,79 +199,7 @@ var ManagingDomainsComponent = class {
       this.done({ kind: "edit", domain });
       return;
     }
-  }
-  invalidate() {
-  }
-  render(width) {
-    const theme = this.theme;
-    const listWidth = Math.min(28, Math.floor(width * 0.35));
-    const detailWidth = Math.max(20, width - listWidth - 3);
-    const lines = [];
-    lines.push(
-      truncateToWidth(
-        theme.fg("accent", theme.bold("Managing domains")),
-        width
-      )
-    );
-    if (this.domains.length === 0) {
-      lines.push("");
-      lines.push(theme.fg("dim", "No domains defined."));
-      lines.push(theme.fg("dim", "Press q to close."));
-      return lines;
-    }
-    const domain = this.domains[this.selectedIndex];
-    const leftLines = [];
-    for (let index = 0; index < this.domains.length; index++) {
-      const item = this.domains[index];
-      const isSelected = index === this.selectedIndex;
-      const marker = isSelected ? theme.fg("accent", "\u203A ") : "  ";
-      const label = isSelected ? theme.fg("accent", theme.bold(item.name)) : theme.fg("text", item.name);
-      leftLines.push(
-        truncateToWidth(`${marker}${label}`, listWidth - 1)
-      );
-    }
-    const rightLines = [];
-    rightLines.push(theme.fg("accent", theme.bold(domain.name)));
-    rightLines.push(theme.fg("muted", `id: ${domain.id}`));
-    rightLines.push("");
-    rightLines.push(theme.fg("muted", "Description"));
-    rightLines.push(...wrapTextWithAnsi(domain.description, detailWidth));
-    rightLines.push("");
-    rightLines.push(theme.fg("muted", "Remit"));
-    rightLines.push(...wrapTextWithAnsi(domain.remit, detailWidth));
-    rightLines.push("");
-    rightLines.push(theme.fg("muted", "Exclusions"));
-    if (domain.exclusions.length === 0) {
-      rightLines.push(theme.fg("dim", "None"));
-    } else {
-      for (const exclusion of domain.exclusions) {
-        rightLines.push(`\u2022 ${truncateToWidth(exclusion, detailWidth - 2)}`);
-      }
-    }
-    const rowCount = Math.max(leftLines.length, rightLines.length);
-    const verticalBorder = theme.fg("borderMuted", "\u2502");
-    for (let row = 0; row < rowCount; row++) {
-      const left = leftLines[row] ?? "";
-      const right = rightLines[row] ?? "";
-      const paddedLeft = left.padEnd(listWidth, " ");
-      lines.push(
-        truncateToWidth(
-          `${paddedLeft} ${verticalBorder} ${right}`,
-          width
-        )
-      );
-    }
-    lines.push("");
-    lines.push(
-      truncateToWidth(
-        theme.fg(
-          "dim",
-          "\u2191/\u2193 navigate \u2022 e edit remit \u2022 d delete \u2022 q close"
-        ),
-        width
-      )
-    );
-    return lines;
+    this.list.handleInput(data);
   }
 };
 
