@@ -6,7 +6,6 @@ import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import {
   Container,
   HStack,
-  matchesKey,
   Spacer,
 } from "@earendil-works/pi-tui";
 
@@ -14,6 +13,7 @@ import { DomainDetailsComponent } from "~/extensions/components/domain-details.t
 import { DomainListComponent } from "~/extensions/components/domain-list.ts";
 import { HelpLineComponent } from "~/extensions/components/help-line.ts";
 import { TitleComponent } from "~/extensions/components/title.ts";
+import { mapInputs } from "~/extensions/utils.ts";
 
 export type ManagingDomainsAction =
   | { kind: "close" }
@@ -89,23 +89,28 @@ export class ManagingDomainsComponent extends Container {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "q") || matchesKey(data, "escape")) {
-      this.done({ kind: "close" });
-      return;
-    }
-
     const domain = this.list.getSelectedDomain();
-    if (!domain) {
-      return;
-    }
 
-    if (matchesKey(data, "d")) {
-      this.done({ kind: "delete", domain });
-      return;
-    }
+    const handleClose = () => this.done({ kind: "close" });
+    const handleDelete = () => {
+      if (domain) {
+        this.done({ kind: "delete", domain });
+      }
+    };
+    const handleEdit = () => {
+      if (domain) {
+        this.done({ kind: "edit", domain });
+      }
+    };
 
-    if (matchesKey(data, "e")) {
-      this.done({ kind: "edit", domain });
+    if (
+      mapInputs(data, {
+        d: handleDelete,
+        e: handleEdit,
+        escape: handleClose,
+        q: handleClose,
+      })
+    ) {
       return;
     }
 

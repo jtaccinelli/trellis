@@ -3,7 +3,9 @@ import type { Domain } from "~/extensions/storage/domains/types.ts";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 
-import { matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth } from "@earendil-works/pi-tui";
+
+import { mapInputs } from "~/extensions/utils.ts";
 
 export class DomainListComponent implements Component {
   private selectedIndex: number;
@@ -25,20 +27,25 @@ export class DomainListComponent implements Component {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "up") || matchesKey(data, "k")) {
+    const handlePrevious = () => {
       this.selectedIndex = Math.max(0, this.selectedIndex - 1);
       this.requestRender();
-      return;
-    }
+    };
 
-    if (matchesKey(data, "down") || matchesKey(data, "j")) {
+    const handleNext = () => {
       this.selectedIndex = Math.min(
         this.domains.length - 1,
         this.selectedIndex + 1,
       );
       this.requestRender();
-      return;
-    }
+    };
+
+    mapInputs(data, {
+      up: handlePrevious,
+      k: handlePrevious,
+      down: handleNext,
+      j: handleNext,
+    });
   }
 
   invalidate(): void {

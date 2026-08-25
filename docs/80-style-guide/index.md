@@ -138,6 +138,7 @@ Custom components built with `ctx.ui.custom<T>()` and `@earendil-works/pi-tui` m
 - Implement `Component.invalidate()` only to clear local render caches. Do not call `requestRender()` from `invalidate()`.
 - All async work started from `handleInput()` (for example `ui.confirm()` or `ui.input()`) can resolve after the component has been closed. Implement `dispose()` to set a `disposed` flag, and guard post-close UI updates and storage calls with that flag.
 - After the `done()` callback fires, treat the component as dead: do not mutate state or request further renders.
+- Route keyboard input through `mapInputs(data, { ... })` from `~/extensions/utils.ts`. Define small, named handlers inside `handleInput()` for each action so the key-to-action mapping is visible at a glance.
 
 ```typescript
 const component = new MyComponent({

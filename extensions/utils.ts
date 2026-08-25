@@ -1,5 +1,8 @@
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 
+import { matchesKey } from "@earendil-works/pi-tui";
+import type { KeyId } from "@earendil-works/pi-tui";
+
 /**
  * One-off utility helpers shared across the extension.
  *
@@ -33,4 +36,26 @@ export function formatToolResult<TDetails>(
     content: [textBlock(text)],
     details,
   };
+}
+
+/**
+ * Routes a raw keypress to the first matching handler in a key map.
+ *
+ * Handlers should be small, named actions declared inside the component's
+ * handleInput method so the key-to-action mapping is visible at a glance.
+ */
+export function mapInputs(
+  data: string,
+  handlers: Partial<Record<KeyId, () => void>>,
+): boolean {
+  for (const [key, handler] of Object.entries(handlers)) {
+    if (!handler) {
+      continue;
+    }
+    if (matchesKey(data, key as KeyId)) {
+      handler();
+      return true;
+    }
+  }
+  return false;
 }

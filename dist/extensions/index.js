@@ -3,7 +3,6 @@ import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import {
   Container,
   HStack,
-  matchesKey as matchesKey2,
   Spacer
 } from "@earendil-works/pi-tui";
 
@@ -56,7 +55,40 @@ var DomainDetailsComponent = class {
 };
 
 // extensions/components/domain-list.ts
-import { matchesKey, truncateToWidth as truncateToWidth2 } from "@earendil-works/pi-tui";
+import { truncateToWidth as truncateToWidth2 } from "@earendil-works/pi-tui";
+
+// extensions/utils.ts
+import { matchesKey } from "@earendil-works/pi-tui";
+function json(value) {
+  return JSON.stringify(value);
+}
+function parseJson(value) {
+  if (value == null) return void 0;
+  return JSON.parse(value);
+}
+function textBlock(text) {
+  return { type: "text", text };
+}
+function formatToolResult(text, details) {
+  return {
+    content: [textBlock(text)],
+    details
+  };
+}
+function mapInputs(data, handlers) {
+  for (const [key, handler] of Object.entries(handlers)) {
+    if (!handler) {
+      continue;
+    }
+    if (matchesKey(data, key)) {
+      handler();
+      return true;
+    }
+  }
+  return false;
+}
+
+// extensions/components/domain-list.ts
 var DomainListComponent = class {
   constructor(domains, initialSelectedIndex, theme, requestRender) {
     this.domains = domains;
@@ -75,19 +107,23 @@ var DomainListComponent = class {
     return this.domains[this.selectedIndex];
   }
   handleInput(data) {
-    if (matchesKey(data, "up") || matchesKey(data, "k")) {
+    const handlePrevious = () => {
       this.selectedIndex = Math.max(0, this.selectedIndex - 1);
       this.requestRender();
-      return;
-    }
-    if (matchesKey(data, "down") || matchesKey(data, "j")) {
+    };
+    const handleNext = () => {
       this.selectedIndex = Math.min(
         this.domains.length - 1,
         this.selectedIndex + 1
       );
       this.requestRender();
-      return;
-    }
+    };
+    mapInputs(data, {
+      up: handlePrevious,
+      k: handlePrevious,
+      down: handleNext,
+      j: handleNext
+    });
   }
   invalidate() {
   }
@@ -201,20 +237,24 @@ var ManagingDomainsComponent = class extends Container {
     );
   }
   handleInput(data) {
-    if (matchesKey2(data, "q") || matchesKey2(data, "escape")) {
-      this.done({ kind: "close" });
-      return;
-    }
     const domain = this.list.getSelectedDomain();
-    if (!domain) {
-      return;
-    }
-    if (matchesKey2(data, "d")) {
-      this.done({ kind: "delete", domain });
-      return;
-    }
-    if (matchesKey2(data, "e")) {
-      this.done({ kind: "edit", domain });
+    const handleClose = () => this.done({ kind: "close" });
+    const handleDelete = () => {
+      if (domain) {
+        this.done({ kind: "delete", domain });
+      }
+    };
+    const handleEdit = () => {
+      if (domain) {
+        this.done({ kind: "edit", domain });
+      }
+    };
+    if (mapInputs(data, {
+      d: handleDelete,
+      e: handleEdit,
+      escape: handleClose,
+      q: handleClose
+    })) {
       return;
     }
     this.list.handleInput(data);
@@ -324,26 +364,6 @@ var QueueManager = class {
 
 // extensions/storage/domains/handler.ts
 import "node:sqlite";
-
-// extensions/utils.ts
-function json(value) {
-  return JSON.stringify(value);
-}
-function parseJson(value) {
-  if (value == null) return void 0;
-  return JSON.parse(value);
-}
-function textBlock(text) {
-  return { type: "text", text };
-}
-function formatToolResult(text, details) {
-  return {
-    content: [textBlock(text)],
-    details
-  };
-}
-
-// extensions/storage/domains/handler.ts
 var DomainHandler = class {
   database;
   constructor(options) {
