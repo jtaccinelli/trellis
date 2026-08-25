@@ -23,7 +23,7 @@ export type DomainManagerAction =
 interface DomainManagerComponentOptions {
   domains: Domain[];
   done: (action: DomainManagerAction) => void;
-  initialSelectedDomainId?: string;
+  initialSelectedIndex?: number;
   requestRender: () => void;
   theme: Theme;
 }
@@ -36,18 +36,9 @@ export class DomainManagerComponent extends Container {
     super();
 
     this.done = options.done;
-    const initialSelectedIndex = options.initialSelectedDomainId
-      ? Math.max(
-        0,
-        options.domains.findIndex(
-          (domain) => domain.id === options.initialSelectedDomainId,
-        ),
-      )
-      : 0;
-
     this.list = new DomainListComponent(
       options.domains,
-      initialSelectedIndex,
+      options.initialSelectedIndex ?? 0,
       options.theme,
       options.requestRender,
     );
