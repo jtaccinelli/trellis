@@ -19,7 +19,6 @@
   "scripts": {
     "build": "node scripts/build.js",
     "check": "tsc --noEmit",
-    "prepare": "pnpm run build",
     "test:storage": "tsx tests/storage.test.ts",
     "test:domains": "tsx tests/domains-tool.test.ts"
   },
