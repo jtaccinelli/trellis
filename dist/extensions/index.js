@@ -287,31 +287,56 @@ function registerManagingDomainsCommand(pi, storage) {
             theme
           })
         );
-        if (!action || action.kind === "close") {
+        if (!action) {
           break;
         }
-        selectedDomainId = action.domain.id;
-        if (action.kind === "delete") {
+        const handleClose = () => {
+          running = false;
+        };
+        const handleDelete = async (deleteAction) => {
+          selectedDomainId = deleteAction.domain.id;
           const confirmed = await ctx.ui.confirm(
             "Delete domain?",
-            `Remove "${action.domain.name}" (${action.domain.id})? This cannot be undone.`
+            `Remove "${deleteAction.domain.name}" (${deleteAction.domain.id})? This cannot be undone.`
           );
           if (confirmed) {
-            await storage.domains.delete(action.domain.id);
-            ctx.ui.notify(`Domain "${action.domain.id}" deleted.`, "info");
+            await storage.domains.delete(deleteAction.domain.id);
+            ctx.ui.notify(
+              `Domain "${deleteAction.domain.id}" deleted.`,
+              "info"
+            );
             selectedDomainId = void 0;
           }
-          continue;
-        }
-        if (action.kind === "edit") {
-          const remit = await ctx.ui.input("Edit remit", action.domain.remit);
+        };
+        const handleEdit = async (editAction) => {
+          selectedDomainId = editAction.domain.id;
+          const remit = await ctx.ui.input("Edit remit", editAction.domain.remit);
           if (remit !== void 0) {
-            await storage.domains.update({ ...action.domain, remit });
-            ctx.ui.notify(`Domain "${action.domain.id}" updated.`, "info");
+            await storage.domains.update({ ...editAction.domain, remit });
+            ctx.ui.notify(
+              `Domain "${editAction.domain.id}" updated.`,
+              "info"
+            );
           }
-          continue;
+        };
+        switch (action.kind) {
+          case "close": {
+            handleClose();
+            break;
+          }
+          case "delete": {
+            await handleDelete(action);
+            break;
+          }
+          case "edit": {
+            await handleEdit(action);
+            break;
+          }
+          default: {
+            running = false;
+            break;
+          }
         }
-        break;
       }
     }
   });
