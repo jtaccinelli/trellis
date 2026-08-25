@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
@@ -32,25 +32,18 @@ export function registerManagingDomainsCommand(
           : 0;
 
         const action = await ctx.ui.custom<DomainManagerAction | undefined>(
-          (tui, theme, _keybindings, done) => {
-            return new DomainManagerComponent({
+          (tui, theme, _keybindings, done) =>
+            new DomainManagerComponent({
               domains,
               done,
               initialSelectedIndex,
               requestRender: () => tui.requestRender(),
               theme,
-            });
-          },
+            }),
         );
 
-        if (!action) {
-          running = false;
-          continue;
-        }
-
-        if (action.kind === "close") {
-          running = false;
-          continue;
+        if (!action || action.kind === "close") {
+          break;
         }
 
         selectedDomainId = action.domain.id;
@@ -69,10 +62,7 @@ export function registerManagingDomainsCommand(
         }
 
         if (action.kind === "edit") {
-          const remit = await ctx.ui.input(
-            "Edit remit",
-            action.domain.remit,
-          );
+          const remit = await ctx.ui.input("Edit remit", action.domain.remit);
           if (remit !== undefined) {
             await storage.domains.update({ ...action.domain, remit });
             ctx.ui.notify(`Domain "${action.domain.id}" updated.`, "info");
@@ -80,7 +70,7 @@ export function registerManagingDomainsCommand(
           continue;
         }
 
-        running = false;
+        break;
       }
     },
   });

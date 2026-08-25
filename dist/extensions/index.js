@@ -279,23 +279,16 @@ function registerManagingDomainsCommand(pi, storage) {
           domains.findIndex((domain) => domain.id === selectedDomainId)
         ) : 0;
         const action = await ctx.ui.custom(
-          (tui, theme, _keybindings, done) => {
-            return new DomainManagerComponent({
-              domains,
-              done,
-              initialSelectedIndex,
-              requestRender: () => tui.requestRender(),
-              theme
-            });
-          }
+          (tui, theme, _keybindings, done) => new DomainManagerComponent({
+            domains,
+            done,
+            initialSelectedIndex,
+            requestRender: () => tui.requestRender(),
+            theme
+          })
         );
-        if (!action) {
-          running = false;
-          continue;
-        }
-        if (action.kind === "close") {
-          running = false;
-          continue;
+        if (!action || action.kind === "close") {
+          break;
         }
         selectedDomainId = action.domain.id;
         if (action.kind === "delete") {
@@ -311,17 +304,14 @@ function registerManagingDomainsCommand(pi, storage) {
           continue;
         }
         if (action.kind === "edit") {
-          const remit = await ctx.ui.input(
-            "Edit remit",
-            action.domain.remit
-          );
+          const remit = await ctx.ui.input("Edit remit", action.domain.remit);
           if (remit !== void 0) {
             await storage.domains.update({ ...action.domain, remit });
             ctx.ui.notify(`Domain "${action.domain.id}" updated.`, "info");
           }
           continue;
         }
-        running = false;
+        break;
       }
     }
   });
