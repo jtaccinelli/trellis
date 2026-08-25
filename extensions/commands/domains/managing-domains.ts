@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import type { Domain } from "~/extensions/storage/domains/types.ts";
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
 import {
@@ -50,37 +51,27 @@ export function registerManagingDomainsCommand(
           running = false;
         };
 
-        const handleDelete = async (
-          deleteAction: Extract<DomainManagerAction, { kind: "delete" }>,
-        ) => {
-          selectedDomainId = deleteAction.domain.id;
+        const handleDelete = async (domain: Domain) => {
+          selectedDomainId = domain.id;
 
           const confirmed = await ctx.ui.confirm(
             "Delete domain?",
-            `Remove "${deleteAction.domain.name}" (${deleteAction.domain.id})? This cannot be undone.`,
+            `Remove "${domain.name}" (${domain.id})? This cannot be undone.`,
           );
           if (confirmed) {
-            await storage.domains.delete(deleteAction.domain.id);
-            ctx.ui.notify(
-              `Domain "${deleteAction.domain.id}" deleted.`,
-              "info",
-            );
+            await storage.domains.delete(domain.id);
+            ctx.ui.notify(`Domain "${domain.id}" deleted.`, "info");
             selectedDomainId = undefined;
           }
         };
 
-        const handleEdit = async (
-          editAction: Extract<DomainManagerAction, { kind: "edit" }>,
-        ) => {
-          selectedDomainId = editAction.domain.id;
+        const handleEdit = async (domain: Domain) => {
+          selectedDomainId = domain.id;
 
-          const remit = await ctx.ui.input("Edit remit", editAction.domain.remit);
+          const remit = await ctx.ui.input("Edit remit", domain.remit);
           if (remit !== undefined) {
-            await storage.domains.update({ ...editAction.domain, remit });
-            ctx.ui.notify(
-              `Domain "${editAction.domain.id}" updated.`,
-              "info",
-            );
+            await storage.domains.update({ ...domain, remit });
+            ctx.ui.notify(`Domain "${domain.id}" updated.`, "info");
           }
         };
 
@@ -90,11 +81,11 @@ export function registerManagingDomainsCommand(
             break;
           }
           case "delete": {
-            await handleDelete(action);
+            await handleDelete(action.domain);
             break;
           }
           case "edit": {
-            await handleEdit(action);
+            await handleEdit(action.domain);
             break;
           }
           default: {

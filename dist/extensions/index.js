@@ -293,30 +293,24 @@ function registerManagingDomainsCommand(pi, storage) {
         const handleClose = () => {
           running = false;
         };
-        const handleDelete = async (deleteAction) => {
-          selectedDomainId = deleteAction.domain.id;
+        const handleDelete = async (domain) => {
+          selectedDomainId = domain.id;
           const confirmed = await ctx.ui.confirm(
             "Delete domain?",
-            `Remove "${deleteAction.domain.name}" (${deleteAction.domain.id})? This cannot be undone.`
+            `Remove "${domain.name}" (${domain.id})? This cannot be undone.`
           );
           if (confirmed) {
-            await storage.domains.delete(deleteAction.domain.id);
-            ctx.ui.notify(
-              `Domain "${deleteAction.domain.id}" deleted.`,
-              "info"
-            );
+            await storage.domains.delete(domain.id);
+            ctx.ui.notify(`Domain "${domain.id}" deleted.`, "info");
             selectedDomainId = void 0;
           }
         };
-        const handleEdit = async (editAction) => {
-          selectedDomainId = editAction.domain.id;
-          const remit = await ctx.ui.input("Edit remit", editAction.domain.remit);
+        const handleEdit = async (domain) => {
+          selectedDomainId = domain.id;
+          const remit = await ctx.ui.input("Edit remit", domain.remit);
           if (remit !== void 0) {
-            await storage.domains.update({ ...editAction.domain, remit });
-            ctx.ui.notify(
-              `Domain "${editAction.domain.id}" updated.`,
-              "info"
-            );
+            await storage.domains.update({ ...domain, remit });
+            ctx.ui.notify(`Domain "${domain.id}" updated.`, "info");
           }
         };
         switch (action.kind) {
@@ -325,11 +319,11 @@ function registerManagingDomainsCommand(pi, storage) {
             break;
           }
           case "delete": {
-            await handleDelete(action);
+            await handleDelete(action.domain);
             break;
           }
           case "edit": {
-            await handleEdit(action);
+            await handleEdit(action.domain);
             break;
           }
           default: {
