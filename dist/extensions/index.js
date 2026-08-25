@@ -187,9 +187,15 @@ var DomainManagerComponent = class extends Container {
   constructor(options) {
     super();
     this.done = options.done;
+    const initialSelectedIndex = options.initialSelectedDomainId ? Math.max(
+      0,
+      options.domains.findIndex(
+        (domain) => domain.id === options.initialSelectedDomainId
+      )
+    ) : 0;
     this.list = new DomainListComponent(
       options.domains,
-      options.initialSelectedIndex ?? 0,
+      initialSelectedIndex,
       options.theme,
       options.requestRender
     );
@@ -270,19 +276,15 @@ function registerManagingDomainsCommand(pi, storage) {
         ctx.ui.notify("/managing-domains requires TUI mode", "error");
         return;
       }
-      let selectedDomainId;
+      let lastSelectedDomainId;
       let running = true;
       while (running) {
         const domains = await storage.domains.list();
-        const initialSelectedIndex = selectedDomainId ? Math.max(
-          0,
-          domains.findIndex((domain) => domain.id === selectedDomainId)
-        ) : 0;
         const action = await ctx.ui.custom(
           (tui, theme, _keybindings, done) => new DomainManagerComponent({
             domains,
             done,
-            initialSelectedIndex,
+            initialSelectedDomainId: lastSelectedDomainId,
             requestRender: () => tui.requestRender(),
             theme
           })
@@ -290,7 +292,7 @@ function registerManagingDomainsCommand(pi, storage) {
         if (!action || action.kind === "close") {
           break;
         }
-        selectedDomainId = action.domain.id;
+        lastSelectedDomainId = action.domain.id;
         if (action.kind === "delete") {
           const confirmed = await ctx.ui.confirm(
             "Delete domain?",
@@ -299,7 +301,7 @@ function registerManagingDomainsCommand(pi, storage) {
           if (confirmed) {
             await storage.domains.delete(action.domain.id);
             ctx.ui.notify(`Domain "${action.domain.id}" deleted.`, "info");
-            selectedDomainId = void 0;
+            lastSelectedDomainId = void 0;
           }
           continue;
         }

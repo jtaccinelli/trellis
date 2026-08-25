@@ -19,24 +19,18 @@ export function registerManagingDomainsCommand(
         return;
       }
 
-      let selectedDomainId: string | undefined;
+      let lastSelectedDomainId: string | undefined;
       let running = true;
 
       while (running) {
         const domains = await storage.domains.list();
-        const initialSelectedIndex = selectedDomainId
-          ? Math.max(
-            0,
-            domains.findIndex((domain) => domain.id === selectedDomainId),
-          )
-          : 0;
 
         const action = await ctx.ui.custom<DomainManagerAction | undefined>(
           (tui, theme, _keybindings, done) =>
             new DomainManagerComponent({
               domains,
               done,
-              initialSelectedIndex,
+              initialSelectedDomainId: lastSelectedDomainId,
               requestRender: () => tui.requestRender(),
               theme,
             }),
@@ -46,7 +40,7 @@ export function registerManagingDomainsCommand(
           break;
         }
 
-        selectedDomainId = action.domain.id;
+        lastSelectedDomainId = action.domain.id;
 
         if (action.kind === "delete") {
           const confirmed = await ctx.ui.confirm(
@@ -56,7 +50,7 @@ export function registerManagingDomainsCommand(
           if (confirmed) {
             await storage.domains.delete(action.domain.id);
             ctx.ui.notify(`Domain "${action.domain.id}" deleted.`, "info");
-            selectedDomainId = undefined;
+            lastSelectedDomainId = undefined;
           }
           continue;
         }
