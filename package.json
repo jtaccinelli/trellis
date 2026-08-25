@@ -3,24 +3,38 @@
   "version": "0.1.0",
   "description": "Trellis — a pi extension.",
   "type": "module",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/jtaccinelli/trellis.git"
   },
   "pi": {
-    "extensions": ["./extensions"]
+    "extensions": [
+      "./dist/extensions/index.js"
+    ]
   },
   "scripts": {
-    "check": "tsc --noEmit"
+    "build": "node scripts/build.js",
+    "check": "tsc --noEmit",
+    "prepare": "pnpm run build",
+    "test:storage": "tsx tests/storage.test.ts",
+    "test:domains": "tsx tests/domains-tool.test.ts"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
     "typebox": "*"
   },
   "devDependencies": {
+    "@earendil-works/pi-tui": "^0.84.3",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.12",
     "typescript": "^5.6.0"
-  }
+  },
+  "packageManager": "pnpm@10.12.4+sha512.5ea8b0deed94ed68691c9bad4c955492705c5eeb8a87ef86bc62c74a26b037b08ff9570f108b2e4dbd1dd1a9186fea925e527f141c648e85af45631074680184"
 }
