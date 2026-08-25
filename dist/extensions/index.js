@@ -1,4 +1,4 @@
-// extensions/components/managing-domains.ts
+// extensions/components/domain-manager.ts
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import {
   Container,
@@ -180,8 +180,8 @@ var TitleComponent = class {
   }
 };
 
-// extensions/components/managing-domains.ts
-var ManagingDomainsComponent = class extends Container {
+// extensions/components/domain-manager.ts
+var DomainManagerComponent = class extends Container {
   done;
   list;
   constructor(options) {
@@ -280,7 +280,7 @@ function registerManagingDomainsCommand(pi, storage) {
         ) : 0;
         const action = await ctx.ui.custom(
           (tui, theme, _keybindings, done) => {
-            return new ManagingDomainsComponent({
+            return new DomainManagerComponent({
               domains,
               done,
               initialSelectedIndex,

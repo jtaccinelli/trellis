@@ -3,9 +3,9 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
 import {
-  ManagingDomainsComponent,
-  type ManagingDomainsAction,
-} from "~/extensions/components/managing-domains.ts";
+  DomainManagerComponent,
+  type DomainManagerAction,
+} from "~/extensions/components/domain-manager.ts";
 
 export function registerManagingDomainsCommand(
   pi: ExtensionAPI,
@@ -31,9 +31,9 @@ export function registerManagingDomainsCommand(
           )
           : 0;
 
-        const action = await ctx.ui.custom<ManagingDomainsAction | undefined>(
+        const action = await ctx.ui.custom<DomainManagerAction | undefined>(
           (tui, theme, _keybindings, done) => {
-            return new ManagingDomainsComponent({
+            return new DomainManagerComponent({
               domains,
               done,
               initialSelectedIndex,

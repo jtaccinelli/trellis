@@ -15,24 +15,24 @@ import { HelpLineComponent } from "~/extensions/components/help-line.ts";
 import { TitleComponent } from "~/extensions/components/title.ts";
 import { mapInputs } from "~/extensions/utils.ts";
 
-export type ManagingDomainsAction =
+export type DomainManagerAction =
   | { kind: "close" }
   | { kind: "delete"; domain: Domain }
   | { kind: "edit"; domain: Domain };
 
-interface ManagingDomainsComponentOptions {
+interface DomainManagerComponentOptions {
   domains: Domain[];
-  done: (action: ManagingDomainsAction) => void;
+  done: (action: DomainManagerAction) => void;
   initialSelectedIndex?: number;
   requestRender: () => void;
   theme: Theme;
 }
 
-export class ManagingDomainsComponent extends Container {
-  private readonly done: (action: ManagingDomainsAction) => void;
+export class DomainManagerComponent extends Container {
+  private readonly done: (action: DomainManagerAction) => void;
   private readonly list: DomainListComponent;
 
-  constructor(options: ManagingDomainsComponentOptions) {
+  constructor(options: DomainManagerComponentOptions) {
     super();
 
     this.done = options.done;
