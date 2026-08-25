@@ -4,6 +4,10 @@ import { Type } from "typebox";
 
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
+import { toolResult } from "~/extensions/utils.ts";
+
+const parameters = Type.Object({});
+
 export function registerListingDomainsTool(
   pi: ExtensionAPI,
   storage: StorageAdapter,
@@ -14,19 +18,11 @@ export function registerListingDomainsTool(
     description: "List all defined Trellis domains.",
     promptSnippet:
       "Use when the user or a coordinator needs to see the current domain taxonomy.",
-    parameters: Type.Object({}),
+    parameters,
     async execute() {
       const domains = await storage.domains.list();
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: `${domains.length} domain(s) defined.`,
-          },
-        ],
-        details: { domains },
-      };
+      return toolResult(`${domains.length} domain(s) defined.`, { domains });
     },
   });
 }

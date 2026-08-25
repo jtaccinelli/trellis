@@ -5,9 +5,15 @@ import { Type } from "typebox";
 import type { Domain } from "~/extensions/storage/domains/types.ts";
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
+import { toolResult } from "~/extensions/utils.ts";
+
 interface GettingDomainDetails {
   domain?: Domain;
 }
+
+const parameters = Type.Object({
+  id: Type.String({ description: "Stable domain identifier" }),
+});
 
 export function registerGettingDomainTool(
   pi: ExtensionAPI,
@@ -19,29 +25,20 @@ export function registerGettingDomainTool(
     description: "Read a single project domain by identifier.",
     promptSnippet:
       "Use when the user or an agent needs the full record for one domain.",
-    parameters: Type.Object({
-      id: Type.String({ description: "Stable domain identifier" }),
-    }),
+    parameters,
     async execute(_toolCallId, params) {
       const domain = await storage.domains.get(params.id);
       if (!domain) {
-        return {
-          content: [
-            { type: "text", text: `Domain "${params.id}" was not found.` },
-          ],
-          details: { domain: undefined } as GettingDomainDetails,
-        };
+        return toolResult(
+          `Domain "${params.id}" was not found.`,
+          { domain: undefined } as GettingDomainDetails,
+        );
       }
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Domain "${params.id}" found: ${domain.name} — ${domain.description}`,
-          },
-        ],
-        details: { domain } as GettingDomainDetails,
-      };
+      return toolResult(
+        `Domain "${params.id}" found: ${domain.name} — ${domain.description}`,
+        { domain } as GettingDomainDetails,
+      );
     },
   });
 }

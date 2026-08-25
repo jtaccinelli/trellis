@@ -333,6 +333,15 @@ function parseJson(value) {
   if (value == null) return void 0;
   return JSON.parse(value);
 }
+function textBlock(text) {
+  return { type: "text", text };
+}
+function toolResult(text, details) {
+  return {
+    content: [textBlock(text)],
+    details
+  };
+}
 
 // extensions/storage/domains/handler.ts
 var DomainHandler = class {
@@ -482,178 +491,153 @@ var SQLiteStorageAdapter = class {
 
 // extensions/tools/domains/creating-domain.ts
 import { Type } from "typebox";
+var parameters = Type.Object({
+  id: Type.String({ description: "Stable domain identifier" }),
+  name: Type.String({ description: "Human-readable domain name" }),
+  description: Type.String({
+    description: "Short summary of what the domain covers"
+  }),
+  remit: Type.String({
+    description: "Detailed responsibility statement for domain agents assessing scope"
+  }),
+  exclusions: Type.Array(Type.String(), {
+    description: "Concerns this domain explicitly refuses to own"
+  })
+});
 function registerCreatingDomainTool(pi, storage) {
   pi.registerTool({
     name: "creating-domain",
     label: "Create Domain",
     description: "Create a project domain in the Trellis taxonomy.",
     promptSnippet: "Use when the user wants to add a new domain to the project taxonomy.",
-    parameters: Type.Object({
-      id: Type.String({ description: "Stable domain identifier" }),
-      name: Type.String({ description: "Human-readable domain name" }),
-      description: Type.String({
-        description: "Short summary of what the domain covers"
-      }),
-      remit: Type.String({
-        description: "Detailed responsibility statement for domain agents assessing scope"
-      }),
-      exclusions: Type.Array(Type.String(), {
-        description: "Concerns this domain explicitly refuses to own"
-      })
-    }),
+    parameters,
     async execute(_toolCallId, params) {
       const existing = await storage.domains.get(params.id);
       if (existing) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Domain "${params.id}" already exists. Choose a different identifier or update the existing domain.`
-            }
-          ],
-          details: { existing, domain: void 0 }
-        };
+        return toolResult(
+          `Domain "${params.id}" already exists. Choose a different identifier or update the existing domain.`,
+          { existing, domain: void 0 }
+        );
       }
       const domain = { ...params };
       await storage.domains.create(domain);
-      return {
-        content: [
-          { type: "text", text: `Domain "${params.id}" created successfully.` }
-        ],
-        details: { existing: void 0, domain }
-      };
+      return toolResult(
+        `Domain "${params.id}" created successfully.`,
+        { existing: void 0, domain }
+      );
     }
   });
 }
 
 // extensions/tools/domains/deleting-domain.ts
 import { Type as Type2 } from "typebox";
+var parameters2 = Type2.Object({
+  id: Type2.String({ description: "Stable domain identifier" })
+});
 function registerDeletingDomainTool(pi, storage) {
   pi.registerTool({
     name: "deleting-domain",
     label: "Delete Domain",
     description: "Remove a project domain from the Trellis taxonomy.",
     promptSnippet: "Use when the user explicitly asks to remove a domain. This cannot be undone.",
-    parameters: Type2.Object({
-      id: Type2.String({ description: "Stable domain identifier" })
-    }),
+    parameters: parameters2,
     async execute(_toolCallId, params) {
       const deleted = await storage.domains.delete(params.id);
       if (!deleted) {
-        return {
-          content: [
-            { type: "text", text: `Domain "${params.id}" was not found.` }
-          ],
-          details: { deleted: false }
-        };
+        return toolResult(
+          `Domain "${params.id}" was not found.`,
+          { deleted: false }
+        );
       }
-      return {
-        content: [
-          { type: "text", text: `Domain "${params.id}" deleted successfully.` }
-        ],
-        details: { deleted: true }
-      };
+      return toolResult(
+        `Domain "${params.id}" deleted successfully.`,
+        { deleted: true }
+      );
     }
   });
 }
 
 // extensions/tools/domains/getting-domain.ts
 import { Type as Type3 } from "typebox";
+var parameters3 = Type3.Object({
+  id: Type3.String({ description: "Stable domain identifier" })
+});
 function registerGettingDomainTool(pi, storage) {
   pi.registerTool({
     name: "getting-domain",
     label: "Get Domain",
     description: "Read a single project domain by identifier.",
     promptSnippet: "Use when the user or an agent needs the full record for one domain.",
-    parameters: Type3.Object({
-      id: Type3.String({ description: "Stable domain identifier" })
-    }),
+    parameters: parameters3,
     async execute(_toolCallId, params) {
       const domain = await storage.domains.get(params.id);
       if (!domain) {
-        return {
-          content: [
-            { type: "text", text: `Domain "${params.id}" was not found.` }
-          ],
-          details: { domain: void 0 }
-        };
+        return toolResult(
+          `Domain "${params.id}" was not found.`,
+          { domain: void 0 }
+        );
       }
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Domain "${params.id}" found: ${domain.name} \u2014 ${domain.description}`
-          }
-        ],
-        details: { domain }
-      };
+      return toolResult(
+        `Domain "${params.id}" found: ${domain.name} \u2014 ${domain.description}`,
+        { domain }
+      );
     }
   });
 }
 
 // extensions/tools/domains/listing-domains.ts
 import { Type as Type4 } from "typebox";
+var parameters4 = Type4.Object({});
 function registerListingDomainsTool(pi, storage) {
   pi.registerTool({
     name: "listing-domains",
     label: "List Domains",
     description: "List all defined Trellis domains.",
     promptSnippet: "Use when the user or a coordinator needs to see the current domain taxonomy.",
-    parameters: Type4.Object({}),
+    parameters: parameters4,
     async execute() {
       const domains = await storage.domains.list();
-      return {
-        content: [
-          {
-            type: "text",
-            text: `${domains.length} domain(s) defined.`
-          }
-        ],
-        details: { domains }
-      };
+      return toolResult(`${domains.length} domain(s) defined.`, { domains });
     }
   });
 }
 
 // extensions/tools/domains/updating-domain.ts
 import { Type as Type5 } from "typebox";
+var parameters5 = Type5.Object({
+  id: Type5.String({ description: "Stable domain identifier" }),
+  name: Type5.String({ description: "Human-readable domain name" }),
+  description: Type5.String({
+    description: "Short summary of what the domain covers"
+  }),
+  remit: Type5.String({
+    description: "Detailed responsibility statement for domain agents assessing scope"
+  }),
+  exclusions: Type5.Array(Type5.String(), {
+    description: "Concerns this domain explicitly refuses to own"
+  })
+});
 function registerUpdatingDomainTool(pi, storage) {
   pi.registerTool({
     name: "updating-domain",
     label: "Update Domain",
     description: "Overwrite fields of an existing project domain.",
     promptSnippet: "Use when the user wants to change the description, remit, or exclusions of an existing domain.",
-    parameters: Type5.Object({
-      id: Type5.String({ description: "Stable domain identifier" }),
-      name: Type5.String({ description: "Human-readable domain name" }),
-      description: Type5.String({
-        description: "Short summary of what the domain covers"
-      }),
-      remit: Type5.String({
-        description: "Detailed responsibility statement for domain agents assessing scope"
-      }),
-      exclusions: Type5.Array(Type5.String(), {
-        description: "Concerns this domain explicitly refuses to own"
-      })
-    }),
+    parameters: parameters5,
     async execute(_toolCallId, params) {
       const existing = await storage.domains.get(params.id);
       if (!existing) {
-        return {
-          content: [
-            { type: "text", text: `Domain "${params.id}" does not exist. Create it first.` }
-          ],
-          details: { updated: false, domain: void 0 }
-        };
+        return toolResult(
+          `Domain "${params.id}" does not exist. Create it first.`,
+          { updated: false, domain: void 0 }
+        );
       }
       const domain = { ...params };
       await storage.domains.update(domain);
-      return {
-        content: [
-          { type: "text", text: `Domain "${params.id}" updated successfully.` }
-        ],
-        details: { domain, updated: true }
-      };
+      return toolResult(
+        `Domain "${params.id}" updated successfully.`,
+        { domain, updated: true }
+      );
     }
   });
 }

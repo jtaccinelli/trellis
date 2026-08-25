@@ -1,3 +1,5 @@
+import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
+
 /**
  * One-off utility helpers shared across the extension.
  *
@@ -12,4 +14,23 @@ export function json<T>(value: T): string {
 export function parseJson<T>(value: string | null | undefined): T {
   if (value == null) return undefined as T;
   return JSON.parse(value) as T;
+}
+
+export interface ToolTextContent {
+  type: "text";
+  text: string;
+}
+
+export function textBlock(text: string): ToolTextContent {
+  return { type: "text", text };
+}
+
+export function toolResult<TDetails>(
+  text: string,
+  details: TDetails,
+): AgentToolResult<TDetails> {
+  return {
+    content: [textBlock(text)],
+    details,
+  };
 }

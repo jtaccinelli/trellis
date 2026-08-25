@@ -48,6 +48,47 @@ Conventions we follow so the codebase, docs, and agent definitions stay consiste
 - Keep managers in `extensions/managers/` as deterministic, event-driven runtime components.
 - Put small, generic helpers in `extensions/utils.ts`. If a helper grows domain logic, promote it to a manager, tool, or dedicated module.
 
+## Tool layout and output
+
+Within each tool file, keep the layout predictable: imports, a per-tool `Details` interface, a top-level `parameters` constant, then the `register...Tool` function.
+
+### Parameter schemas
+
+Declare the parameter schema as a top-level `parameters` constant directly above the `register...Tool` function. Do not inline `Type.Object(...)` inside `registerTool`'s `parameters` property; pulling it out of the function body makes the schema visible at a glance and keeps the registration call itself readable.
+
+```typescript
+const parameters = Type.Object({
+  id: Type.String({ description: "Stable domain identifier" }),
+});
+
+export function registerGettingDomainTool(
+  pi: ExtensionAPI,
+  storage: StorageAdapter,
+): void {
+  pi.registerTool({
+    name: "getting-domain",
+    parameters,
+    // ...
+  });
+}
+```
+
+### Result formatting
+
+Use the shared result helpers from `~/extensions/utils.ts` instead of hand-assembling `{ type: "text", text: ... }` content blocks in every tool:
+
+- `toolResult(text, details)` — returns a full tool result with a single text content block and the supplied `details` payload.
+- `textBlock(text)` — returns a single text content block when building multi-block content manually.
+
+This keeps tool output consistent, removes visual clutter, and makes it easier for readers to focus on the behavior rather than the wrapper shape.
+
+```typescript
+return toolResult(
+  `Domain "${params.id}" created successfully.`,
+  { existing: undefined, domain } as CreatingDomainDetails,
+);
+```
+
 ## Documentation
 
 - This repo is **documentation-first while the architecture stabilizes**. Before changing behavior, update the relevant docs:
