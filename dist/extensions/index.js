@@ -3,46 +3,60 @@ import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import {
   Container,
   HStack,
-  matchesKey,
-  Spacer,
-  truncateToWidth,
-  wrapTextWithAnsi
+  matchesKey as matchesKey2,
+  Spacer
 } from "@earendil-works/pi-tui";
-var TitleComponent = class {
-  constructor(theme) {
+
+// extensions/components/domain-details.ts
+import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+var DomainDetailsComponent = class {
+  constructor(getDomain, theme) {
+    this.getDomain = getDomain;
     this.theme = theme;
   }
+  getDomain;
   theme;
   invalidate() {
   }
   render(width) {
-    return [
+    const domain = this.getDomain();
+    const lines = [];
+    if (!domain) {
+      lines.push(
+        truncateToWidth(this.theme.fg("dim", "No domain selected."), width)
+      );
+      return lines;
+    }
+    lines.push(
       truncateToWidth(
-        this.theme.fg("accent", this.theme.bold("Managing domains")),
+        this.theme.fg("accent", this.theme.bold(domain.name)),
         width
       )
-    ];
+    );
+    lines.push(
+      truncateToWidth(this.theme.fg("muted", `id: ${domain.id}`), width)
+    );
+    lines.push("");
+    lines.push(truncateToWidth(this.theme.fg("muted", "Description"), width));
+    lines.push(...wrapTextWithAnsi(domain.description, width));
+    lines.push("");
+    lines.push(truncateToWidth(this.theme.fg("muted", "Remit"), width));
+    lines.push(...wrapTextWithAnsi(domain.remit, width));
+    lines.push("");
+    lines.push(truncateToWidth(this.theme.fg("muted", "Exclusions"), width));
+    if (domain.exclusions.length === 0) {
+      lines.push(truncateToWidth(this.theme.fg("dim", "None"), width));
+    } else {
+      for (const exclusion of domain.exclusions) {
+        lines.push(truncateToWidth(`\u2022 ${exclusion}`, width));
+      }
+    }
+    return lines;
   }
 };
-var HelpComponent = class {
-  constructor(theme) {
-    this.theme = theme;
-  }
-  theme;
-  invalidate() {
-  }
-  render(width) {
-    return [
-      truncateToWidth(
-        this.theme.fg(
-          "dim",
-          "\u2191/\u2193 or j/k navigate \xB7 e edit remit \xB7 d delete \xB7 q close"
-        ),
-        width
-      )
-    ];
-  }
-};
+
+// extensions/components/domain-list.ts
+import { matchesKey, truncateToWidth as truncateToWidth2 } from "@earendil-works/pi-tui";
 var DomainListComponent = class {
   constructor(domains, initialSelectedIndex, theme, requestRender) {
     this.domains = domains;
@@ -79,7 +93,7 @@ var DomainListComponent = class {
   }
   render(width) {
     if (this.domains.length === 0) {
-      return [truncateToWidth(this.theme.fg("dim", "No domains"), width)];
+      return [truncateToWidth2(this.theme.fg("dim", "No domains"), width)];
     }
     const lines = [];
     for (let index = 0; index < this.domains.length; index++) {
@@ -87,53 +101,50 @@ var DomainListComponent = class {
       const isSelected = index === this.selectedIndex;
       const marker = isSelected ? this.theme.fg("accent", "\u203A ") : "  ";
       const label = isSelected ? this.theme.fg("accent", this.theme.bold(item.name)) : this.theme.fg("text", item.name);
-      lines.push(truncateToWidth(`${marker}${label}`, width));
+      lines.push(truncateToWidth2(`${marker}${label}`, width));
     }
     return lines;
   }
 };
-var DomainDetailsComponent = class {
-  constructor(getDomain, theme) {
-    this.getDomain = getDomain;
+
+// extensions/components/help-line.ts
+import { truncateToWidth as truncateToWidth3 } from "@earendil-works/pi-tui";
+var HelpLineComponent = class {
+  constructor(theme, content) {
     this.theme = theme;
+    this.content = content;
   }
-  getDomain;
   theme;
+  content;
   invalidate() {
   }
   render(width) {
-    const domain = this.getDomain();
-    const lines = [];
-    if (!domain) {
-      lines.push(truncateToWidth(this.theme.fg("dim", "No domain selected."), width));
-      return lines;
-    }
-    lines.push(
-      truncateToWidth(this.theme.fg("accent", this.theme.bold(domain.name)), width)
-    );
-    lines.push(
-      truncateToWidth(this.theme.fg("muted", `id: ${domain.id}`), width)
-    );
-    lines.push("");
-    lines.push(truncateToWidth(this.theme.fg("muted", "Description"), width));
-    lines.push(...wrapTextWithAnsi(domain.description, width));
-    lines.push("");
-    lines.push(truncateToWidth(this.theme.fg("muted", "Remit"), width));
-    lines.push(...wrapTextWithAnsi(domain.remit, width));
-    lines.push("");
-    lines.push(truncateToWidth(this.theme.fg("muted", "Exclusions"), width));
-    if (domain.exclusions.length === 0) {
-      lines.push(truncateToWidth(this.theme.fg("dim", "None"), width));
-    } else {
-      for (const exclusion of domain.exclusions) {
-        lines.push(
-          truncateToWidth(`\u2022 ${exclusion}`, width)
-        );
-      }
-    }
-    return lines;
+    return [truncateToWidth3(this.theme.fg("dim", this.content), width)];
   }
 };
+
+// extensions/components/title.ts
+import { truncateToWidth as truncateToWidth4 } from "@earendil-works/pi-tui";
+var TitleComponent = class {
+  constructor(theme, title) {
+    this.theme = theme;
+    this.title = title;
+  }
+  theme;
+  title;
+  invalidate() {
+  }
+  render(width) {
+    return [
+      truncateToWidth4(
+        this.theme.fg("accent", this.theme.bold(this.title)),
+        width
+      )
+    ];
+  }
+};
+
+// extensions/components/managing-domains.ts
 var ManagingDomainsComponent = class extends Container {
   done;
   list;
@@ -154,7 +165,9 @@ var ManagingDomainsComponent = class extends Container {
     this.addChild(
       new DynamicBorder((s) => options.theme.fg("accent", s))
     );
-    this.addChild(new TitleComponent(options.theme));
+    this.addChild(
+      new TitleComponent(options.theme, "Managing domains")
+    );
     this.addChild(new Spacer(1));
     this.addChild(
       new HStack(
@@ -177,13 +190,18 @@ var ManagingDomainsComponent = class extends Container {
       )
     );
     this.addChild(new Spacer(1));
-    this.addChild(new HelpComponent(options.theme));
+    this.addChild(
+      new HelpLineComponent(
+        options.theme,
+        "\u2191/\u2193 or j/k navigate \xB7 e edit remit \xB7 d delete \xB7 q close"
+      )
+    );
     this.addChild(
       new DynamicBorder((s) => options.theme.fg("accent", s))
     );
   }
   handleInput(data) {
-    if (matchesKey(data, "q") || matchesKey(data, "escape")) {
+    if (matchesKey2(data, "q") || matchesKey2(data, "escape")) {
       this.done({ kind: "close" });
       return;
     }
@@ -191,11 +209,11 @@ var ManagingDomainsComponent = class extends Container {
     if (!domain) {
       return;
     }
-    if (matchesKey(data, "d")) {
+    if (matchesKey2(data, "d")) {
       this.done({ kind: "delete", domain });
       return;
     }
-    if (matchesKey(data, "e")) {
+    if (matchesKey2(data, "e")) {
       this.done({ kind: "edit", domain });
       return;
     }
