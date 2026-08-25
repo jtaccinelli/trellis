@@ -89,6 +89,47 @@ import { MigrationHandler } from "~/extensions/storage/migrations/handler.ts";
 import { json, parseJson } from "~/extensions/utils.ts";
 ```
 
+## TUI components
+
+Custom components built with `ctx.ui.custom<T>()` and `@earendil-works/pi-tui` must not recursively invalidate the TUI.
+
+- Use `tui.requestRender()` as the redraw mechanism. Never wire `tui.invalidate()` to a component callback — `TUI.invalidate()` walks every mounted component and will call your component back.
+- Implement `Component.invalidate()` only to clear local render caches. Do not call `requestRender()` from `invalidate()`.
+- All async work started from `handleInput()` (for example `ui.confirm()` or `ui.input()`) can resolve after the component has been closed. Implement `dispose()` to set a `disposed` flag, and guard post-close UI updates and storage calls with that flag.
+- After the `done()` callback fires, treat the component as dead: do not mutate state or request further renders.
+
+```typescript
+const component = new MyComponent({
+  done,
+  requestRender: () => tui.requestRender(),
+  // ... other options
+});
+
+class MyComponent implements Component {
+  private disposed = false;
+
+  invalidate(): void {
+    // clear caches only
+  }
+
+  dispose(): void {
+    this.disposed = true;
+  }
+
+  handleInput(data: string): void {
+    if (matchesKey(data, "enter")) {
+      this.ui.confirm("Delete?", "...").then(async (confirmed) => {
+        if (!confirmed || this.disposed) return;
+        await this.storage.delete(...);
+        if (this.disposed) return;
+        this.requestRender();
+      });
+    }
+  }
+  // ...
+}
+```
+
 ## Agent definitions
 
 - Agent definitions live in `extensions/agents/*.md` with frontmatter (`name`, `description`, `tools`, `thinking`) and a system-prompt body.

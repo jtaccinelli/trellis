@@ -1,7 +1,6 @@
 import type { Domain } from "~/extensions/storage/domains/types.ts";
-import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
-import type { ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 
 import {
   matchesKey,
@@ -9,45 +8,44 @@ import {
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 
+export type ManagingDomainsAction =
+  | { kind: "close" }
+  | { kind: "delete"; domain: Domain }
+  | { kind: "edit"; domain: Domain };
+
 interface ManagingDomainsComponentOptions {
   domains: Domain[];
-  done: () => void;
-  redraw: () => void;
-  storage: StorageAdapter;
+  done: (action: ManagingDomainsAction) => void;
+  initialSelectedIndex?: number;
+  requestRender: () => void;
   theme: Theme;
-  ui: ExtensionUIContext;
 }
 
 export class ManagingDomainsComponent {
   private domains: Domain[];
-  private readonly done: () => void;
-  private readonly redraw: () => void;
+  private readonly done: (action: ManagingDomainsAction) => void;
+  private readonly requestRender: () => void;
   private selectedIndex: number;
-  private readonly storage: StorageAdapter;
   private readonly theme: Theme;
-  private readonly ui: ExtensionUIContext;
 
   constructor(options: ManagingDomainsComponentOptions) {
     this.domains = options.domains;
     this.done = options.done;
-    this.redraw = options.redraw;
-    this.selectedIndex = 0;
-    this.storage = options.storage;
+    this.requestRender = options.requestRender;
+    this.selectedIndex = Math.max(
+      0,
+      Math.min(
+        options.initialSelectedIndex ?? 0,
+        options.domains.length - 1,
+      ),
+    );
     this.theme = options.theme;
-    this.ui = options.ui;
-  }
-
-  async refreshDomains(): Promise<void> {
-    this.domains = await this.storage.domains.list();
-    if (this.selectedIndex >= this.domains.length) {
-      this.selectedIndex = Math.max(0, this.domains.length - 1);
-    }
-    this.redraw();
   }
 
   handleInput(data: string): void {
     if (matchesKey(data, "up") || matchesKey(data, "k")) {
       this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+      this.requestRender();
       return;
     }
 
@@ -56,11 +54,12 @@ export class ManagingDomainsComponent {
         this.domains.length - 1,
         this.selectedIndex + 1,
       );
+      this.requestRender();
       return;
     }
 
     if (matchesKey(data, "q") || matchesKey(data, "escape")) {
-      this.done();
+      this.done({ kind: "close" });
       return;
     }
 
@@ -68,36 +67,19 @@ export class ManagingDomainsComponent {
     if (!domain) return;
 
     if (matchesKey(data, "d")) {
-      this.ui
-        .confirm(
-          "Delete domain?",
-          `Remove "${domain.name}" (${domain.id})? This cannot be undone.`,
-        )
-        .then(async (confirmed) => {
-          if (confirmed) {
-            await this.storage.domains.delete(domain.id);
-            this.ui.notify(`Domain "${domain.id}" deleted.`, "info");
-            await this.refreshDomains();
-          }
-        });
+      this.done({ kind: "delete", domain });
       return;
     }
 
     if (matchesKey(data, "e")) {
-      this.ui
-        .input("Edit remit", domain.remit)
-        .then(async (remit) => {
-          if (remit === undefined) return;
-          const updated: Domain = { ...domain, remit };
-          await this.storage.domains.update(updated);
-          this.ui.notify(`Domain "${domain.id}" updated.`, "info");
-          await this.refreshDomains();
-        });
+      this.done({ kind: "edit", domain });
+      return;
     }
   }
 
   invalidate(): void {
-    this.redraw();
+    // Cache-free component: nothing to clear. Do not call requestRender()
+    // here because TUI.invalidate() is recursive.
   }
 
   render(width: number): string[] {
@@ -121,7 +103,6 @@ export class ManagingDomainsComponent {
     }
 
     const domain = this.domains[this.selectedIndex];
-    const maxVisible = Math.max(3, 20); // placeholder; we render all for simplicity
 
     const leftLines: string[] = [];
     for (let index = 0; index < this.domains.length; index++) {
@@ -162,6 +143,7 @@ export class ManagingDomainsComponent {
       const left = leftLines[row] ?? "";
       const right = rightLines[row] ?? "";
       const paddedLeft = left.padEnd(listWidth, " ");
+
       lines.push(
         truncateToWidth(
           `${paddedLeft} ${verticalBorder} ${right}`,

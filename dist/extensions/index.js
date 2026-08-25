@@ -7,30 +7,26 @@ import {
 var ManagingDomainsComponent = class {
   domains;
   done;
-  redraw;
+  requestRender;
   selectedIndex;
-  storage;
   theme;
-  ui;
   constructor(options) {
     this.domains = options.domains;
     this.done = options.done;
-    this.redraw = options.redraw;
-    this.selectedIndex = 0;
-    this.storage = options.storage;
+    this.requestRender = options.requestRender;
+    this.selectedIndex = Math.max(
+      0,
+      Math.min(
+        options.initialSelectedIndex ?? 0,
+        options.domains.length - 1
+      )
+    );
     this.theme = options.theme;
-    this.ui = options.ui;
-  }
-  async refreshDomains() {
-    this.domains = await this.storage.domains.list();
-    if (this.selectedIndex >= this.domains.length) {
-      this.selectedIndex = Math.max(0, this.domains.length - 1);
-    }
-    this.redraw();
   }
   handleInput(data) {
     if (matchesKey(data, "up") || matchesKey(data, "k")) {
       this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+      this.requestRender();
       return;
     }
     if (matchesKey(data, "down") || matchesKey(data, "j")) {
@@ -38,39 +34,25 @@ var ManagingDomainsComponent = class {
         this.domains.length - 1,
         this.selectedIndex + 1
       );
+      this.requestRender();
       return;
     }
     if (matchesKey(data, "q") || matchesKey(data, "escape")) {
-      this.done();
+      this.done({ kind: "close" });
       return;
     }
     const domain = this.domains[this.selectedIndex];
     if (!domain) return;
     if (matchesKey(data, "d")) {
-      this.ui.confirm(
-        "Delete domain?",
-        `Remove "${domain.name}" (${domain.id})? This cannot be undone.`
-      ).then(async (confirmed) => {
-        if (confirmed) {
-          await this.storage.domains.delete(domain.id);
-          this.ui.notify(`Domain "${domain.id}" deleted.`, "info");
-          await this.refreshDomains();
-        }
-      });
+      this.done({ kind: "delete", domain });
       return;
     }
     if (matchesKey(data, "e")) {
-      this.ui.input("Edit remit", domain.remit).then(async (remit) => {
-        if (remit === void 0) return;
-        const updated = { ...domain, remit };
-        await this.storage.domains.update(updated);
-        this.ui.notify(`Domain "${domain.id}" updated.`, "info");
-        await this.refreshDomains();
-      });
+      this.done({ kind: "edit", domain });
+      return;
     }
   }
   invalidate() {
-    this.redraw();
   }
   render(width) {
     const theme = this.theme;
@@ -90,7 +72,6 @@ var ManagingDomainsComponent = class {
       return lines;
     }
     const domain = this.domains[this.selectedIndex];
-    const maxVisible = Math.max(3, 20);
     const leftLines = [];
     for (let index = 0; index < this.domains.length; index++) {
       const item = this.domains[index];
@@ -155,17 +136,59 @@ function registerManagingDomainsCommand(pi, storage) {
         ctx.ui.notify("/managing-domains requires TUI mode", "error");
         return;
       }
-      const domains = await storage.domains.list();
-      await ctx.ui.custom((tui, theme, _keybindings, done) => {
-        return new ManagingDomainsComponent({
-          domains,
-          done,
-          redraw: () => tui.invalidate(),
-          storage,
-          theme,
-          ui: ctx.ui
-        });
-      });
+      let selectedDomainId;
+      let running = true;
+      while (running) {
+        const domains = await storage.domains.list();
+        const initialSelectedIndex = selectedDomainId ? Math.max(
+          0,
+          domains.findIndex((domain) => domain.id === selectedDomainId)
+        ) : 0;
+        const action = await ctx.ui.custom(
+          (tui, theme, _keybindings, done) => {
+            return new ManagingDomainsComponent({
+              domains,
+              done,
+              initialSelectedIndex,
+              requestRender: () => tui.requestRender(),
+              theme
+            });
+          }
+        );
+        if (!action) {
+          running = false;
+          continue;
+        }
+        if (action.kind === "close") {
+          running = false;
+          continue;
+        }
+        selectedDomainId = action.domain.id;
+        if (action.kind === "delete") {
+          const confirmed = await ctx.ui.confirm(
+            "Delete domain?",
+            `Remove "${action.domain.name}" (${action.domain.id})? This cannot be undone.`
+          );
+          if (confirmed) {
+            await storage.domains.delete(action.domain.id);
+            ctx.ui.notify(`Domain "${action.domain.id}" deleted.`, "info");
+            selectedDomainId = void 0;
+          }
+          continue;
+        }
+        if (action.kind === "edit") {
+          const remit = await ctx.ui.input(
+            "Edit remit",
+            action.domain.remit
+          );
+          if (remit !== void 0) {
+            await storage.domains.update({ ...action.domain, remit });
+            ctx.ui.notify(`Domain "${action.domain.id}" updated.`, "info");
+          }
+          continue;
+        }
+        running = false;
+      }
     }
   });
 }

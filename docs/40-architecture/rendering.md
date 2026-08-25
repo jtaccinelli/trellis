@@ -37,6 +37,15 @@ A shared snapshot is emitted via `onUpdate` so the TUI can render `2/3 done, 1 r
 
 - `ctx.ui.setWidget("inspecting-tree", ...)` renders a compact session/agent status line above/below the editor.
 
+## Custom full-screen components
+
+Commands and tools that replace the editor with `ctx.ui.custom<T>()` must handle teardown correctly:
+
+- Pass `requestRender: () => tui.requestRender()` to the component. Do **not** use `tui.invalidate()` as the redraw trigger, because `TUI.invalidate()` recursively invalidates mounted components and will re-enter the same component.
+- Implement `Component.invalidate()` only to clear local render caches. Do not call `requestRender()` from it.
+- Implement `dispose()` and a `disposed` flag for any component that starts async work from `handleInput()`. Guard post-close UI updates and storage calls so they do not run after the component has been closed.
+- Once `done()` is called, the component must not mutate state or request further renders.
+
 ## Interactive inspector
 
 - `/inspecting-tree` opens `ctx.ui.custom({ overlay: true })` with tree, details, and message panes.
