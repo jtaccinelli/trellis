@@ -25,7 +25,7 @@ export function textBlock(text: string): ToolTextContent {
   return { type: "text", text };
 }
 
-export function toolResult<TDetails>(
+export function formatToolResult<TDetails>(
   text: string,
   details: TDetails,
 ): AgentToolResult<TDetails> {

@@ -77,15 +77,15 @@ export function registerGettingDomainTool(
 
 Use the shared result helpers from `~/extensions/utils.ts` instead of hand-assembling `{ type: "text", text: ... }` content blocks in every tool:
 
-- `toolResult(text, details)` — returns a full tool result with a single text content block and the supplied `details` payload.
+- `formatToolResult<TDetails>(text, details)` — returns a full tool result with a single text content block and the typed `details` payload.
 - `textBlock(text)` — returns a single text content block when building multi-block content manually.
 
 This keeps tool output consistent, removes visual clutter, and makes it easier for readers to focus on the behavior rather than the wrapper shape.
 
 ```typescript
-return toolResult(
+return formatToolResult<CreatingDomainDetails>(
   `Domain "${params.id}" created successfully.`,
-  { existing: undefined, domain } as CreatingDomainDetails,
+  { existing: undefined, domain },
 );
 ```
 

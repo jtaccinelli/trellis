@@ -336,7 +336,7 @@ function parseJson(value) {
 function textBlock(text) {
   return { type: "text", text };
 }
-function toolResult(text, details) {
+function formatToolResult(text, details) {
   return {
     content: [textBlock(text)],
     details
@@ -514,14 +514,14 @@ function registerCreatingDomainTool(pi, storage) {
     async execute(_toolCallId, params) {
       const existing = await storage.domains.get(params.id);
       if (existing) {
-        return toolResult(
+        return formatToolResult(
           `Domain "${params.id}" already exists. Choose a different identifier or update the existing domain.`,
           { existing, domain: void 0 }
         );
       }
       const domain = { ...params };
       await storage.domains.create(domain);
-      return toolResult(
+      return formatToolResult(
         `Domain "${params.id}" created successfully.`,
         { existing: void 0, domain }
       );
@@ -544,12 +544,12 @@ function registerDeletingDomainTool(pi, storage) {
     async execute(_toolCallId, params) {
       const deleted = await storage.domains.delete(params.id);
       if (!deleted) {
-        return toolResult(
+        return formatToolResult(
           `Domain "${params.id}" was not found.`,
           { deleted: false }
         );
       }
-      return toolResult(
+      return formatToolResult(
         `Domain "${params.id}" deleted successfully.`,
         { deleted: true }
       );
@@ -572,12 +572,12 @@ function registerGettingDomainTool(pi, storage) {
     async execute(_toolCallId, params) {
       const domain = await storage.domains.get(params.id);
       if (!domain) {
-        return toolResult(
+        return formatToolResult(
           `Domain "${params.id}" was not found.`,
           { domain: void 0 }
         );
       }
-      return toolResult(
+      return formatToolResult(
         `Domain "${params.id}" found: ${domain.name} \u2014 ${domain.description}`,
         { domain }
       );
@@ -597,7 +597,10 @@ function registerListingDomainsTool(pi, storage) {
     parameters: parameters4,
     async execute() {
       const domains = await storage.domains.list();
-      return toolResult(`${domains.length} domain(s) defined.`, { domains });
+      return formatToolResult(
+        `${domains.length} domain(s) defined.`,
+        { domains }
+      );
     }
   });
 }
@@ -627,14 +630,14 @@ function registerUpdatingDomainTool(pi, storage) {
     async execute(_toolCallId, params) {
       const existing = await storage.domains.get(params.id);
       if (!existing) {
-        return toolResult(
+        return formatToolResult(
           `Domain "${params.id}" does not exist. Create it first.`,
           { updated: false, domain: void 0 }
         );
       }
       const domain = { ...params };
       await storage.domains.update(domain);
-      return toolResult(
+      return formatToolResult(
         `Domain "${params.id}" updated successfully.`,
         { domain, updated: true }
       );

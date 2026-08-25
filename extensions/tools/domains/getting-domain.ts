@@ -5,7 +5,7 @@ import { Type } from "typebox";
 import type { Domain } from "~/extensions/storage/domains/types.ts";
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
-import { toolResult } from "~/extensions/utils.ts";
+import { formatToolResult } from "~/extensions/utils.ts";
 
 interface GettingDomainDetails {
   domain?: Domain;
@@ -29,15 +29,15 @@ export function registerGettingDomainTool(
     async execute(_toolCallId, params) {
       const domain = await storage.domains.get(params.id);
       if (!domain) {
-        return toolResult(
+        return formatToolResult<GettingDomainDetails>(
           `Domain "${params.id}" was not found.`,
-          { domain: undefined } as GettingDomainDetails,
+          { domain: undefined },
         );
       }
 
-      return toolResult(
+      return formatToolResult<GettingDomainDetails>(
         `Domain "${params.id}" found: ${domain.name} — ${domain.description}`,
-        { domain } as GettingDomainDetails,
+        { domain },
       );
     },
   });

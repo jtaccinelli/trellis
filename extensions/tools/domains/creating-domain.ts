@@ -5,7 +5,7 @@ import { Type } from "typebox";
 import type { Domain } from "~/extensions/storage/domains/types.ts";
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
-import { toolResult } from "~/extensions/utils.ts";
+import { formatToolResult } from "~/extensions/utils.ts";
 
 interface CreatingDomainDetails {
   domain?: Domain;
@@ -41,18 +41,18 @@ export function registerCreatingDomainTool(
     async execute(_toolCallId, params) {
       const existing = await storage.domains.get(params.id);
       if (existing) {
-        return toolResult(
+        return formatToolResult<CreatingDomainDetails>(
           `Domain "${params.id}" already exists. Choose a different identifier or update the existing domain.`,
-          { existing, domain: undefined } as CreatingDomainDetails,
+          { existing, domain: undefined },
         );
       }
 
       const domain: Domain = { ...params };
       await storage.domains.create(domain);
 
-      return toolResult(
+      return formatToolResult<CreatingDomainDetails>(
         `Domain "${params.id}" created successfully.`,
-        { existing: undefined, domain } as CreatingDomainDetails,
+        { existing: undefined, domain },
       );
     },
   });

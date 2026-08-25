@@ -4,7 +4,11 @@ import { Type } from "typebox";
 
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
-import { toolResult } from "~/extensions/utils.ts";
+import { formatToolResult } from "~/extensions/utils.ts";
+
+interface ListingDomainsDetails {
+  domains: Awaited<ReturnType<StorageAdapter["domains"]["list"]>>;
+}
 
 const parameters = Type.Object({});
 
@@ -22,7 +26,10 @@ export function registerListingDomainsTool(
     async execute() {
       const domains = await storage.domains.list();
 
-      return toolResult(`${domains.length} domain(s) defined.`, { domains });
+      return formatToolResult<ListingDomainsDetails>(
+        `${domains.length} domain(s) defined.`,
+        { domains },
+      );
     },
   });
 }

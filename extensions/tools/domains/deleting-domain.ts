@@ -4,7 +4,7 @@ import { Type } from "typebox";
 
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
-import { toolResult } from "~/extensions/utils.ts";
+import { formatToolResult } from "~/extensions/utils.ts";
 
 interface DeletingDomainDetails {
   deleted: boolean;
@@ -28,15 +28,15 @@ export function registerDeletingDomainTool(
     async execute(_toolCallId, params) {
       const deleted = await storage.domains.delete(params.id);
       if (!deleted) {
-        return toolResult(
+        return formatToolResult<DeletingDomainDetails>(
           `Domain "${params.id}" was not found.`,
-          { deleted: false } as DeletingDomainDetails,
+          { deleted: false },
         );
       }
 
-      return toolResult(
+      return formatToolResult<DeletingDomainDetails>(
         `Domain "${params.id}" deleted successfully.`,
-        { deleted: true } as DeletingDomainDetails,
+        { deleted: true },
       );
     },
   });
