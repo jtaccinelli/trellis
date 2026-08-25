@@ -24,6 +24,21 @@ export class DomainListComponent implements Component {
     return this.domains[this.selectedIndex];
   }
 
+  updateDomains(domains: Domain[], preserveDomainId?: string): void {
+    const previousSelection = this.domains[this.selectedIndex];
+    this.domains = domains;
+
+    const targetId = preserveDomainId ?? previousSelection?.id;
+    const preservedIndex = targetId
+      ? domains.findIndex((domain) => domain.id === targetId)
+      : -1;
+
+    this.selectedIndex =
+      preservedIndex >= 0
+        ? preservedIndex
+        : Math.max(0, Math.min(this.selectedIndex, domains.length - 1));
+  }
+
   handleInput(data: string): void {
     if (matchesKey(data, "up") || matchesKey(data, "k")) {
       this.selectedIndex = Math.max(0, this.selectedIndex - 1);

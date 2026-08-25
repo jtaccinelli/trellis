@@ -74,6 +74,13 @@ var DomainListComponent = class {
   getSelectedDomain() {
     return this.domains[this.selectedIndex];
   }
+  updateDomains(domains, preserveDomainId) {
+    const previousSelection = this.domains[this.selectedIndex];
+    this.domains = domains;
+    const targetId = preserveDomainId ?? previousSelection?.id;
+    const preservedIndex = targetId ? domains.findIndex((domain) => domain.id === targetId) : -1;
+    this.selectedIndex = preservedIndex >= 0 ? preservedIndex : Math.max(0, Math.min(this.selectedIndex, domains.length - 1));
+  }
   handleInput(data) {
     if (matchesKey(data, "up") || matchesKey(data, "k")) {
       this.selectedIndex = Math.max(0, this.selectedIndex - 1);
@@ -146,11 +153,20 @@ var TitleComponent = class {
 
 // extensions/components/managing-domains.ts
 var ManagingDomainsComponent = class extends Container {
+  disposed = false;
   done;
   list;
+  requestRender;
+  storage;
+  theme;
+  ui;
   constructor(options) {
     super();
     this.done = options.done;
+    this.requestRender = options.requestRender;
+    this.storage = options.storage;
+    this.theme = options.theme;
+    this.ui = options.ui;
     this.list = new DomainListComponent(
       options.domains,
       options.initialSelectedIndex ?? 0,
@@ -165,9 +181,7 @@ var ManagingDomainsComponent = class extends Container {
     this.addChild(
       new DynamicBorder((s) => options.theme.fg("accent", s))
     );
-    this.addChild(
-      new TitleComponent(options.theme, "Managing domains")
-    );
+    this.addChild(new TitleComponent(options.theme, "Managing domains"));
     this.addChild(new Spacer(1));
     this.addChild(
       new HStack(
@@ -200,9 +214,12 @@ var ManagingDomainsComponent = class extends Container {
       new DynamicBorder((s) => options.theme.fg("accent", s))
     );
   }
+  dispose() {
+    this.disposed = true;
+  }
   handleInput(data) {
     if (matchesKey2(data, "q") || matchesKey2(data, "escape")) {
-      this.done({ kind: "close" });
+      this.done();
       return;
     }
     const domain = this.list.getSelectedDomain();
@@ -210,14 +227,65 @@ var ManagingDomainsComponent = class extends Container {
       return;
     }
     if (matchesKey2(data, "d")) {
-      this.done({ kind: "delete", domain });
+      void this.deleteDomain(domain).catch((error) => {
+        this.ui.notify(
+          `Failed to delete domain: ${this.errorMessage(error)}`,
+          "error"
+        );
+      });
       return;
     }
     if (matchesKey2(data, "e")) {
-      this.done({ kind: "edit", domain });
+      void this.editRemit(domain).catch((error) => {
+        this.ui.notify(
+          `Failed to update domain: ${this.errorMessage(error)}`,
+          "error"
+        );
+      });
       return;
     }
     this.list.handleInput(data);
+  }
+  async deleteDomain(domain) {
+    const confirmed = await this.ui.confirm(
+      "Delete domain?",
+      `Remove "${domain.name}" (${domain.id})? This cannot be undone.`
+    );
+    if (this.disposed || !confirmed) {
+      return;
+    }
+    await this.storage.domains.delete(domain.id);
+    if (this.disposed) {
+      return;
+    }
+    await this.refresh(domain.id);
+    this.ui.notify(`Domain "${domain.id}" deleted.`, "info");
+  }
+  async editRemit(domain) {
+    const remit = await this.ui.input("Edit remit", domain.remit);
+    if (this.disposed || remit === void 0) {
+      return;
+    }
+    await this.storage.domains.update({ ...domain, remit });
+    if (this.disposed) {
+      return;
+    }
+    await this.refresh(domain.id);
+    this.ui.notify(`Domain "${domain.id}" updated.`, "info");
+  }
+  async refresh(preserveDomainId) {
+    const domains = await this.storage.domains.list();
+    if (this.disposed) {
+      return;
+    }
+    this.list.updateDomains(domains, preserveDomainId);
+    this.requestRender();
+  }
+  errorMessage(error) {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return String(error);
   }
 };
 
@@ -230,59 +298,27 @@ function registerManagingDomainsCommand(pi, storage) {
         ctx.ui.notify("/managing-domains requires TUI mode", "error");
         return;
       }
-      let selectedDomainId;
-      let running = true;
-      while (running) {
-        const domains = await storage.domains.list();
-        const initialSelectedIndex = selectedDomainId ? Math.max(
-          0,
-          domains.findIndex((domain) => domain.id === selectedDomainId)
-        ) : 0;
-        const action = await ctx.ui.custom(
-          (tui, theme, _keybindings, done) => {
-            return new ManagingDomainsComponent({
-              domains,
-              done,
-              initialSelectedIndex,
-              requestRender: () => tui.requestRender(),
-              theme
-            });
+      const domains = await storage.domains.list();
+      await ctx.ui.custom(
+        (tui, theme, _keybindings, closeOverlay) => {
+          return new ManagingDomainsComponent({
+            domains,
+            done: () => closeOverlay(void 0),
+            requestRender: () => tui.requestRender(),
+            storage,
+            theme,
+            ui: ctx.ui
+          });
+        },
+        {
+          overlay: true,
+          overlayOptions: {
+            anchor: "center",
+            width: "80%",
+            maxHeight: "80%"
           }
-        );
-        if (!action) {
-          running = false;
-          continue;
         }
-        if (action.kind === "close") {
-          running = false;
-          continue;
-        }
-        selectedDomainId = action.domain.id;
-        if (action.kind === "delete") {
-          const confirmed = await ctx.ui.confirm(
-            "Delete domain?",
-            `Remove "${action.domain.name}" (${action.domain.id})? This cannot be undone.`
-          );
-          if (confirmed) {
-            await storage.domains.delete(action.domain.id);
-            ctx.ui.notify(`Domain "${action.domain.id}" deleted.`, "info");
-            selectedDomainId = void 0;
-          }
-          continue;
-        }
-        if (action.kind === "edit") {
-          const remit = await ctx.ui.input(
-            "Edit remit",
-            action.domain.remit
-          );
-          if (remit !== void 0) {
-            await storage.domains.update({ ...action.domain, remit });
-            ctx.ui.notify(`Domain "${action.domain.id}" updated.`, "info");
-          }
-          continue;
-        }
-        running = false;
-      }
+      );
     }
   });
 }
