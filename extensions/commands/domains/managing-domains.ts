@@ -1,11 +1,11 @@
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
-import { ManagingDomainsComponent } from "~/extensions/components/managing-domains.ts";
+import {
+  ManagingDomainsComponent,
+  type ManagingDomainsAction,
+} from "~/extensions/components/managing-domains.ts";
 
 export function registerManagingDomainsCommand(
   pi: ExtensionAPI,
@@ -19,28 +19,69 @@ export function registerManagingDomainsCommand(
         return;
       }
 
-      const domains = await storage.domains.list();
+      let selectedDomainId: string | undefined;
+      let running = true;
 
-      await ctx.ui.custom<undefined>(
-        (tui, theme, _keybindings, closeOverlay) => {
-          return new ManagingDomainsComponent({
-            domains,
-            done: () => closeOverlay(undefined),
-            requestRender: () => tui.requestRender(),
-            storage,
-            theme,
-            ui: ctx.ui,
-          });
-        },
-        {
-          overlay: true,
-          overlayOptions: {
-            anchor: "center",
-            width: "80%",
-            maxHeight: "80%",
+      while (running) {
+        const domains = await storage.domains.list();
+        const initialSelectedIndex = selectedDomainId
+          ? Math.max(
+            0,
+            domains.findIndex((domain) => domain.id === selectedDomainId),
+          )
+          : 0;
+
+        const action = await ctx.ui.custom<ManagingDomainsAction | undefined>(
+          (tui, theme, _keybindings, done) => {
+            return new ManagingDomainsComponent({
+              domains,
+              done,
+              initialSelectedIndex,
+              requestRender: () => tui.requestRender(),
+              theme,
+            });
           },
-        },
-      );
+        );
+
+        if (!action) {
+          running = false;
+          continue;
+        }
+
+        if (action.kind === "close") {
+          running = false;
+          continue;
+        }
+
+        selectedDomainId = action.domain.id;
+
+        if (action.kind === "delete") {
+          const confirmed = await ctx.ui.confirm(
+            "Delete domain?",
+            `Remove "${action.domain.name}" (${action.domain.id})? This cannot be undone.`,
+          );
+          if (confirmed) {
+            await storage.domains.delete(action.domain.id);
+            ctx.ui.notify(`Domain "${action.domain.id}" deleted.`, "info");
+            selectedDomainId = undefined;
+          }
+          continue;
+        }
+
+        if (action.kind === "edit") {
+          const remit = await ctx.ui.input(
+            "Edit remit",
+            action.domain.remit,
+          );
+          if (remit !== undefined) {
+            await storage.domains.update({ ...action.domain, remit });
+            ctx.ui.notify(`Domain "${action.domain.id}" updated.`, "info");
+          }
+          continue;
+        }
+
+        running = false;
+      }
     },
   });
 }
