@@ -31,13 +31,17 @@ export type TrellisEventTopic = (typeof TRELLIS_EVENT_TOPICS)[number];
 
 const KNOWN_TRELLIS_EVENT_TOPICS = new Set<string>(TRELLIS_EVENT_TOPICS);
 
-export interface TrellisAgentLifecycleEvent {
-  agentId: string;
-  agentName: string;
+export interface TrellisAgentDetails {
+  id: string;
+  name: string;
   role: string;
   mode: AgentMode;
   requestId: string;
   parentId?: string;
+}
+
+export interface TrellisAgentLifecycleEvent {
+  agent: TrellisAgentDetails;
 }
 
 export interface TrellisAgentSpawnedEvent extends TrellisAgentLifecycleEvent {}

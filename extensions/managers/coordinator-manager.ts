@@ -5,7 +5,7 @@
  * coordinator lifecycle and request-level orchestration.
  *
  * Responsibilities:
- *   - Create root coordinators from `scoping-item` tool calls.
+ *   - Create root coordinators from `scope-item` tool calls.
  *   - Rehydrate coordinator state from the storage adapter on session start.
  *   - Surface work-item completion notifications from the notification manager
  *     to the right coordinator agent.
@@ -20,19 +20,23 @@ import { randomUUID } from "node:crypto";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import type { AgentManager } from "~/extensions/managers/agent-manager.ts";
-import type { NotificationManager } from "~/extensions/managers/notification-manager.ts";
 import type { DomainManager } from "~/extensions/managers/domain-manager.ts";
 import type { ScopeRequest } from "~/extensions/storage/requests/types.ts";
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
-import type { EventPublisher } from "~/extensions/managers/types.ts";
+import type { EventManager } from "~/extensions/managers/types.ts";
+import {
+  TRELLIS_COORDINATOR_STARTED,
+  TRELLIS_COORDINATOR_UPDATED,
+  type TrellisCoordinatorStartedEvent,
+  type TrellisCoordinatorUpdatedEvent,
+} from "~/extensions/utils/events.ts";
 
 export interface CoordinatorManagerOptions {
   storage: StorageAdapter;
   agentManager: AgentManager;
   domainManager: DomainManager;
-  notificationManager: NotificationManager;
   pi: ExtensionAPI;
-  websocketManager?: EventPublisher;
+  websocketManager?: EventManager;
 }
 
 interface CoordinatorState {
@@ -44,9 +48,8 @@ export class CoordinatorManager {
   readonly storage: StorageAdapter;
   readonly agentManager: AgentManager;
   readonly domainManager: DomainManager;
-  readonly notificationManager: NotificationManager;
   readonly pi: ExtensionAPI;
-  readonly websocketManager?: EventPublisher;
+  readonly websocketManager?: EventManager;
 
   readonly coordinators = new Map<string, CoordinatorState>();
 
@@ -54,7 +57,6 @@ export class CoordinatorManager {
     this.storage = options.storage;
     this.agentManager = options.agentManager;
     this.domainManager = options.domainManager;
-    this.notificationManager = options.notificationManager;
     this.pi = options.pi;
     this.websocketManager = options.websocketManager;
   }
@@ -99,9 +101,9 @@ export class CoordinatorManager {
 
     await this.domainManager.enqueue(requirement, coordinatorId);
 
-    const eventPayload = { requestId, coordinatorId };
-    this.pi.events.emit("trellis:coordinator_started", eventPayload);
-    this.websocketManager?.publish("trellis:coordinator_started", eventPayload, { requestId });
+    const eventPayload: TrellisCoordinatorStartedEvent = { requestId, coordinatorId };
+    this.pi.events.emit(TRELLIS_COORDINATOR_STARTED, eventPayload);
+    this.websocketManager?.publish(TRELLIS_COORDINATOR_STARTED, eventPayload, { requestId });
 
     return request;
   }
@@ -137,10 +139,11 @@ export class CoordinatorManager {
 
     // TODO: read the queue item result, update the requirement, create child
     // requirements or contracts, and enqueue new work until the queue is stable.
-    this.pi.events.emit("trellis:coordinator_updated", {
+    const updatedPayload: TrellisCoordinatorUpdatedEvent = {
       requestId: event.requestId,
       queueItemId: event.queueItemId,
       failed: event.failed,
-    });
+    };
+    this.pi.events.emit(TRELLIS_COORDINATOR_UPDATED, updatedPayload);
   }
 }

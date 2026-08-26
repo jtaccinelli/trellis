@@ -11,7 +11,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 
 import type {
-  EventPublisher,
+  EventManager,
   PublishOptions,
   WebSocketServerManagerOptions,
   WebsocketClientRecord,
@@ -19,7 +19,7 @@ import type {
   WebsocketPublishMessage,
 } from "~/extensions/managers/types.ts";
 
-export class WebSocketServerManager implements EventPublisher {
+export class WebSocketServerManager implements EventManager {
   readonly pi: ExtensionAPI;
   readonly token: string;
 

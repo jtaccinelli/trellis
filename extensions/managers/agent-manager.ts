@@ -6,32 +6,44 @@
  * all create agents through this class.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, type StdioOptions } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { withFileMutationQueue, type EventBus } from "@earendil-works/pi-coding-agent";
-import type { Message } from "@earendil-works/pi-ai";
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 
-import type { Agent } from "~/extensions/storage/agents/types.ts";
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 import type {
   AgentDefinition,
   AgentExitInfo,
   AgentMode,
   AgentProcessHandle,
-  AgentRole,
   AgentStartOptions,
-  AgentUsageStats,
-  EventPublisher,
 } from "~/extensions/managers/types.ts";
+
 import {
+  exitStatusFromCode,
   generateAgentId,
   parseAgentSpawnCommand,
+  processAgentStdoutLine,
 } from "~/extensions/utils/agents.ts";
+import type { AgentOutputState } from "~/extensions/utils/agents.ts";
 import { renderLines } from "~/extensions/utils/tui.ts";
+
+interface AgentLaunchConfig {
+  agent: AgentDefinition;
+  options: AgentStartOptions;
+  agentId: string;
+  invocation: { command: string; args: string[] };
+  env: NodeJS.ProcessEnv;
+  tmpPromptDir: string;
+  tmpPromptPath: string;
+  mode: AgentMode;
+  stdio: StdioOptions;
+  initialStdinLine?: string;
+}
 
 export class AgentManager {
   /** Relative directory, from the plugin entry file, that holds agent definitions. */
@@ -40,20 +52,11 @@ export class AgentManager {
   readonly extensionPath: string;
   readonly runningAgentProcesses = new Map<string, AgentProcessHandle>();
   private readonly agentCatalogDir: string;
-  private readonly events?: EventBus;
   private readonly storage?: StorageAdapter;
-  private readonly websocketManager?: EventPublisher;
 
-  constructor(options: {
-    extensionPath: string;
-    events?: EventBus;
-    storage?: StorageAdapter;
-    websocketManager?: EventPublisher;
-  }) {
+  constructor(options: { extensionPath: string; storage?: StorageAdapter }) {
     this.extensionPath = options.extensionPath;
-    this.events = options.events;
     this.storage = options.storage;
-    this.websocketManager = options.websocketManager;
     this.agentCatalogDir = path.join(
       path.dirname(this.extensionPath),
       AgentManager.AGENT_CATALOG_SUBDIR,
@@ -240,12 +243,14 @@ export class AgentManager {
     agentId: string,
     agentName: string,
     options: AgentStartOptions,
+    mode: AgentMode,
   ): NodeJS.ProcessEnv {
     return {
       ...process.env,
       TRELLIS_AGENT_ID: agentId,
       TRELLIS_AGENT_NAME: agentName,
       TRELLIS_ROLE: options.role,
+      TRELLIS_AGENT_MODE: mode,
       TRELLIS_REQUEST_ID: options.requestId,
       ...(options.parentId ? { TRELLIS_PARENT_ID: options.parentId } : {}),
       ...(options.domainId ? { TRELLIS_DOMAIN_ID: options.domainId } : {}),
@@ -255,12 +260,18 @@ export class AgentManager {
       ...(options.mailboxDir
         ? { TRELLIS_MAILBOX_DIR: options.mailboxDir }
         : {}),
-      ...(process.env.TRELLIS_WS_URL ? { TRELLIS_WS_URL: process.env.TRELLIS_WS_URL } : {}),
-      ...(process.env.TRELLIS_WS_TOKEN ? { TRELLIS_WS_TOKEN: process.env.TRELLIS_WS_TOKEN } : {}),
+      ...(process.env.TRELLIS_WS_URL
+        ? { TRELLIS_WS_URL: process.env.TRELLIS_WS_URL }
+        : {}),
+      ...(process.env.TRELLIS_WS_TOKEN
+        ? { TRELLIS_WS_TOKEN: process.env.TRELLIS_WS_TOKEN }
+        : {}),
     };
   }
 
-  async startAgentProcess(options: AgentStartOptions): Promise<AgentProcessHandle> {
+  async prepareAgentConfig(
+    options: AgentStartOptions,
+  ): Promise<AgentLaunchConfig> {
     const agent = this.getAgentDefinition(options.agentName);
 
     if (!agent) {
@@ -273,10 +284,15 @@ export class AgentManager {
       );
     }
 
-    const agentId = options.agentId ?? generateAgentId();
     const mode = options.mode ?? agent.mode ?? "json";
+    const isRpc = mode === "rpc";
+    const agentId = options.agentId ?? generateAgentId();
+
+    const stdio: StdioOptions = isRpc
+      ? ["pipe", "pipe", "pipe"]
+      : ["ignore", "pipe", "pipe"];
     const args = this.prepareAgentFlags(agent, options, agentId);
-    const env = this.prepareAgentEnv(agentId, agent.name, options);
+    const env = this.prepareAgentEnv(agentId, agent.name, options, mode);
 
     const { tmpPromptDir, tmpPromptPath } = await this.prepareAgentPrompt(
       agent,
@@ -286,104 +302,92 @@ export class AgentManager {
     );
 
     const invocation = parseAgentSpawnCommand(args);
+
+    const config: AgentLaunchConfig = {
+      agent,
+      options,
+      agentId,
+      invocation,
+      stdio,
+      env,
+      tmpPromptDir,
+      tmpPromptPath,
+      mode,
+      ...(isRpc
+        ? {
+            initialStdinLine: JSON.stringify({
+              type: "prompt",
+              message: options.task,
+            }),
+          }
+        : {}),
+    };
+
+    return config;
+  }
+
+  async startAgentProcess(
+    _options: AgentStartOptions,
+  ): Promise<AgentProcessHandle> {
+    const {
+      agent,
+      options,
+      agentId,
+      invocation,
+      stdio,
+      env,
+      tmpPromptDir,
+      tmpPromptPath,
+      mode,
+      initialStdinLine,
+    } = await this.prepareAgentConfig(_options);
+
     const child = spawn(invocation.command, invocation.args, {
       cwd: options.cwd ?? process.cwd(),
       shell: false,
-      stdio: mode === "rpc" ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
+      stdio,
       env,
     });
 
-    if (mode === "rpc" && child.stdin) {
-      const initialPrompt = JSON.stringify({ type: "prompt", message: options.task });
-      child.stdin.write(initialPrompt + "\n");
+    if (initialStdinLine && child.stdin) {
+      child.stdin.write(initialStdinLine + "\n");
     }
 
-    const sessionStart = process.env.TRELLIS_SESSION_START ?? String(Date.now());
-    const logDir = path.join(process.cwd(), ".pi", "trellis", "logs", sessionStart);
-    fs.mkdirSync(logDir, { recursive: true });
-    const logPath = path.join(logDir, `${agentId}.jsonl`);
+    this.storage?.agents
+      .create({
+        id: agentId,
+        parent_id: options.parentId,
+        request_id: options.requestId,
+        role: options.role,
+        name: agent.name,
+        status: "running" as const,
+        pid: child.pid ?? undefined,
+        task_preview: options.task.slice(0, 500),
+        started_at: Date.now(),
+        coordinator_id: undefined as string | undefined,
+        domain_id: options.domainId,
+        queue_item_id: options.queueItemId,
+      })
+      .catch(() => {
+        // Storage is best-effort for observability; spawn should not fail.
+      });
 
-    const writeLog = (entry: { stream: "stdout" | "stderr"; line: string; event?: unknown }) => {
-      try {
-        const line = JSON.stringify({ timestamp: Date.now(), ...entry }) + "\n";
-        fs.appendFileSync(logPath, line, "utf-8");
-      } catch {
-        // Log write is best-effort.
-      }
+    const state: AgentOutputState = {
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        cost: 0,
+        contextTokens: 0,
+        turns: 0,
+      },
+      finalResultText: "",
+      stopReason: undefined,
+      errorMessage: undefined,
     };
-
-    const agentRecord = {
-      id: agentId,
-      parent_id: options.parentId,
-      request_id: options.requestId,
-      role: options.role,
-      name: agent.name,
-      status: "running" as const,
-      pid: child.pid ?? undefined,
-      log_path: logPath,
-      task_preview: options.task.slice(0, 500),
-      started_at: Date.now(),
-      coordinator_id: undefined as string | undefined,
-      domain_id: options.domainId,
-      queue_item_id: options.queueItemId,
-    };
-    this.storage?.agents.create(agentRecord).catch(() => {
-      // Storage is best-effort for observability; spawn should not fail.
-    });
-
-    const usage: AgentUsageStats = {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      cost: 0,
-      contextTokens: 0,
-      turns: 0,
-    };
-
-    let finalResultText = "";
-    let stopReason: string | undefined;
-    let errorMessage: string | undefined;
 
     const promise = new Promise<AgentExitInfo>((resolve) => {
-      const processLine = (line: string) => {
-        if (!line.trim()) return;
-        let event: unknown;
-        try {
-          event = JSON.parse(line);
-        } catch {
-          return;
-        }
-
-        if (typeof event !== "object" || event === null) return;
-        const { type, message } = event as { type?: string; message?: Message };
-
-        if (type === "message_end" && message) {
-          if (message.role === "assistant") {
-            usage.turns++;
-            if (message.usage) {
-              usage.input += message.usage.input || 0;
-              usage.output += message.usage.output || 0;
-              usage.cacheRead += message.usage.cacheRead || 0;
-              usage.cacheWrite += message.usage.cacheWrite || 0;
-              usage.cost += message.usage.cost?.total || 0;
-              usage.contextTokens =
-                message.usage.totalTokens ?? usage.contextTokens;
-            }
-            stopReason = message.stopReason;
-            errorMessage = message.errorMessage;
-
-            for (const part of message.content) {
-              if (part.type === "text") {
-                finalResultText = part.text;
-              }
-            }
-          }
-        }
-      };
-
-      writeLog({ stream: "stdout", line: "", event: { type: "agent_spawned", agentId, role: options.role, requestId: options.requestId } });
-
       let stdout = "";
       child.stdout?.on("data", (data) => {
         const chunk = data.toString();
@@ -391,14 +395,7 @@ export class AgentManager {
         const lines = stdout.split("\n");
         stdout = lines.pop() ?? "";
         for (const line of lines) {
-          processLine(line);
-          let parsedEvent: unknown;
-          try {
-            parsedEvent = JSON.parse(line);
-          } catch {
-            parsedEvent = undefined;
-          }
-          writeLog({ stream: "stdout", line, event: parsedEvent });
+          processAgentStdoutLine(line, state);
         }
       });
 
@@ -406,82 +403,48 @@ export class AgentManager {
       child.stderr?.on("data", (data) => {
         const chunk = data.toString();
         stderr += chunk;
-        for (const line of chunk.split("\n")) {
-          if (line.trim()) writeLog({ stream: "stderr", line });
-        }
       });
 
-      const cleanup = () => {
-        this.runningAgentProcesses.delete(agentId);
-        try {
-          fs.unlinkSync(tmpPromptPath);
-          fs.rmdirSync(tmpPromptDir);
-        } catch {
-          // Ignore cleanup errors.
-        }
-      };
-
-      const exitStatusFromCode = (code: number): Agent["status"] =>
-        code === 0 ? "completed" : "failed";
-
-      const persistExit = async (info: AgentExitInfo, status: Agent["status"]) => {
-        try {
-          const existing = await this.storage?.agents.get(agentId);
-          if (existing) {
-            await this.storage?.agents.update({
-              ...existing,
-              status,
-              exited_at: Date.now(),
-              exit_code: info.exitCode,
-              result_text: info.resultText,
-            });
-          }
-        } catch {
-          // Storage is best-effort for observability.
-        }
-      };
-
-      const notifyExit = (info: AgentExitInfo) => {
-        const payload = {
-          agentId,
-          agentName: agent.name,
-          role: options.role,
-          requestId: options.requestId,
-          ...info,
-        };
-        this.events?.emit("trellis:agent_closed", payload);
-        this.websocketManager?.publish("trellis:agent_closed", payload, { requestId: options.requestId });
-      };
-
-      child.on("close", (code) => {
-        if (stdout.trim()) processLine(stdout);
+      child.on("close", async (code) => {
+        if (stdout.trim()) processAgentStdoutLine(stdout, state);
         const info: AgentExitInfo = {
           exitCode: code ?? 0,
-          stopReason,
-          errorMessage,
-          resultText: finalResultText || stderr,
-          usage,
+          stopReason: state.stopReason,
+          errorMessage: state.errorMessage,
+          resultText: state.finalResultText || stderr,
+          usage: state.usage,
         };
-        const status = exitStatusFromCode(info.exitCode);
-        cleanup();
-        persistExit(info, status);
-        writeLog({ stream: "stdout", line: "", event: { type: "agent_exited", exitCode: info.exitCode, stopReason: info.stopReason, errorMessage: info.errorMessage, resultText: info.resultText } });
-        notifyExit(info);
+        try {
+          await this.handleExit({
+            agentId,
+            info,
+            tmpPromptDir,
+            tmpPromptPath,
+          });
+        } catch {
+          // Exit handling is best-effort; always resolve the spawn promise.
+        }
         resolve(info);
       });
 
-      child.on("error", (error) => {
+      child.on("error", async (error) => {
         const info: AgentExitInfo = {
           exitCode: 1,
-          stopReason,
-          errorMessage: error.message || errorMessage,
+          stopReason: state.stopReason,
+          errorMessage: error.message || state.errorMessage,
           resultText: stderr,
-          usage,
+          usage: state.usage,
         };
-        cleanup();
-        persistExit(info, "failed");
-        writeLog({ stream: "stdout", line: "", event: { type: "agent_error", error: error.message } });
-        notifyExit(info);
+        try {
+          await this.handleExit({
+            agentId,
+            info,
+            tmpPromptDir,
+            tmpPromptPath,
+          });
+        } catch {
+          // Exit handling is best-effort; always resolve the spawn promise.
+        }
         resolve(info);
       });
     });
@@ -494,23 +457,9 @@ export class AgentManager {
       startedAt: Date.now(),
       child,
       promise,
-      logPath,
     };
 
     this.runningAgentProcesses.set(agentId, handle);
-
-    this.websocketManager?.publish(
-      "trellis:agent_spawned",
-      {
-        agentId,
-        agentName: agent.name,
-        role: options.role,
-        requestId: options.requestId,
-        parentId: options.parentId,
-        mode,
-      },
-      { requestId: options.requestId },
-    );
 
     return handle;
   }
@@ -530,21 +479,43 @@ export class AgentManager {
   }
 
   /**
-   * Send an RPC command to a running persistent agent.
+   * Shared exit handler invoked from child `close` and `error` events.
    *
-   * Returns true if the agent is known, running in RPC mode, and the command
-   * was written to its stdin. Returns false otherwise.
+   * Cleans up the temporary prompt files, removes the agent from the local
+   * process map, updates the durable registry, and emits both the local
+   * `trellis:agent_closed` event and the WebSocket fan-out.
    */
-  sendRpcCommand(agentId: string, command: Record<string, unknown>): boolean {
-    const handle = this.runningAgentProcesses.get(agentId);
-    if (!handle || handle.mode !== "rpc") return false;
-    if (!handle.child.stdin) return false;
+  private async handleExit(context: {
+    agentId: string;
+    info: AgentExitInfo;
+    tmpPromptDir: string;
+    tmpPromptPath: string;
+  }): Promise<void> {
+    const { agentId, info, tmpPromptDir, tmpPromptPath } = context;
+    const status = exitStatusFromCode(info.exitCode);
+
+    this.runningAgentProcesses.delete(agentId);
 
     try {
-      handle.child.stdin.write(JSON.stringify(command) + "\n");
-      return true;
+      fs.unlinkSync(tmpPromptPath);
+      fs.rmdirSync(tmpPromptDir);
     } catch {
-      return false;
+      // Ignore cleanup errors.
+    }
+
+    try {
+      const existing = await this.storage?.agents.get(agentId);
+      if (existing) {
+        await this.storage?.agents.update({
+          ...existing,
+          status,
+          exited_at: Date.now(),
+          exit_code: info.exitCode,
+          result_text: info.resultText,
+        });
+      }
+    } catch {
+      // Storage is best-effort for observability.
     }
   }
 }

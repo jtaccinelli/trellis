@@ -55,7 +55,6 @@ export interface AgentProcessHandle {
   startedAt: number;
   child: ChildProcess;
   promise: Promise<AgentExitInfo>;
-  logPath: string;
 }
 
 export interface AgentExitInfo {
@@ -101,7 +100,7 @@ export interface PublishOptions {
   target?: string;
   /** Send to every agent registered for this request id. */
   requestId?: string;
-  /** Send to every connected agent except the publisher. */
+  /** Send to every connected agent except the sender. */
   broadcast?: boolean;
 }
 
@@ -169,7 +168,7 @@ export type WebsocketMessage =
   | WebsocketPingMessage
   | WebsocketPongMessage;
 
-export interface EventPublisher {
+export interface EventManager {
   publish(topic: string, payload: unknown, options?: PublishOptions): void;
 }
 

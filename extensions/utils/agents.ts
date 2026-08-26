@@ -24,7 +24,10 @@ export function generateAgentId(): string {
  * When running under a generic runtime (`node` or `bun`) without a stable
  * script path, fall back to the `pi` command on `PATH`.
  */
-export function parseAgentSpawnCommand(args: string[]): { command: string; args: string[] } {
+export function parseAgentSpawnCommand(args: string[]): {
+  command: string;
+  args: string[];
+} {
   const currentScript = process.argv[1];
   const isBunVirtualScript = currentScript?.startsWith("/$bunfs/root/");
   if (currentScript && !isBunVirtualScript && fs.existsSync(currentScript)) {
@@ -104,4 +107,50 @@ export function processAgentStdoutLine(
       state.finalResultText = part.text;
     }
   }
+}
+
+/**
+ * Type guard: check that a value is a non-null object with a string property.
+ */
+export function hasString(
+  object: unknown,
+  key: string,
+): object is Record<string, string> {
+  return (
+    typeof object === "object" &&
+    object !== null &&
+    key in object &&
+    typeof (object as Record<string, unknown>)[key] === "string"
+  );
+}
+
+/**
+ * Extract the concatenated assistant text from a Pi `message_end` payload.
+ *
+ * Returns undefined if the message is not from the assistant or contains no
+ * text parts.
+ */
+export function extractAssistantText(message: unknown): string | undefined {
+  if (
+    !hasString(message, "role") ||
+    (message as { role: string }).role !== "assistant"
+  ) {
+    return undefined;
+  }
+
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) return undefined;
+
+  let text = "";
+  for (const part of content) {
+    if (
+      hasString(part, "type") &&
+      (part as { type: string }).type === "text" &&
+      hasString(part, "text")
+    ) {
+      text += (part as { text: string }).text;
+    }
+  }
+
+  return text || undefined;
 }
