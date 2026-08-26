@@ -13,7 +13,7 @@ import { DomainDetailsComponent } from "~/extensions/components/domain-details.t
 import { DomainListComponent } from "~/extensions/components/domain-list.ts";
 import { HelpLineComponent } from "~/extensions/components/help-line.ts";
 import { TitleComponent } from "~/extensions/components/title.ts";
-import { mapInputs } from "~/extensions/utils.ts";
+import { mapInputs } from "~/extensions/utils/index.ts";
 
 export type DomainManagerAction =
   | { kind: "close" }

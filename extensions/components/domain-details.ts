@@ -4,6 +4,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 
 import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { renderLines } from "~/extensions/utils/tui.ts";
 
 export class DomainDetailsComponent implements Component {
   constructor(
@@ -17,40 +18,24 @@ export class DomainDetailsComponent implements Component {
 
   render(width: number): string[] {
     const domain = this.getDomain();
-    const lines: string[] = [];
 
-    if (!domain) {
-      lines.push(
-        truncateToWidth(this.theme.fg("dim", "No domain selected."), width),
-      );
-      return lines;
-    }
-
-    lines.push(
-      truncateToWidth(
-        this.theme.fg("accent", this.theme.bold(domain.name)),
-        width,
-      ),
+    return renderLines(
+      !domain && truncateToWidth(this.theme.fg("dim", "No domain selected."), width),
+      domain && [
+        truncateToWidth(this.theme.fg("accent", this.theme.bold(domain.name)), width),
+        truncateToWidth(this.theme.fg("muted", `id: ${domain.id}`), width),
+        "",
+        truncateToWidth(this.theme.fg("muted", "Description"), width),
+        ...wrapTextWithAnsi(domain.description, width),
+        "",
+        truncateToWidth(this.theme.fg("muted", "Remit"), width),
+        ...wrapTextWithAnsi(domain.remit, width),
+        "",
+        truncateToWidth(this.theme.fg("muted", "Exclusions"), width),
+        domain.exclusions.length === 0
+          ? truncateToWidth(this.theme.fg("dim", "None"), width)
+          : domain.exclusions.map((exclusion) => truncateToWidth(`• ${exclusion}`, width)),
+      ],
     );
-    lines.push(
-      truncateToWidth(this.theme.fg("muted", `id: ${domain.id}`), width),
-    );
-    lines.push("");
-    lines.push(truncateToWidth(this.theme.fg("muted", "Description"), width));
-    lines.push(...wrapTextWithAnsi(domain.description, width));
-    lines.push("");
-    lines.push(truncateToWidth(this.theme.fg("muted", "Remit"), width));
-    lines.push(...wrapTextWithAnsi(domain.remit, width));
-    lines.push("");
-    lines.push(truncateToWidth(this.theme.fg("muted", "Exclusions"), width));
-    if (domain.exclusions.length === 0) {
-      lines.push(truncateToWidth(this.theme.fg("dim", "None"), width));
-    } else {
-      for (const exclusion of domain.exclusions) {
-        lines.push(truncateToWidth(`• ${exclusion}`, width));
-      }
-    }
-
-    return lines;
   }
 }

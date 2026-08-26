@@ -5,7 +5,7 @@ import type { Component } from "@earendil-works/pi-tui";
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
 
-import { mapInputs } from "~/extensions/utils.ts";
+import { mapInputs, renderLines } from "~/extensions/utils/index.ts";
 
 export class DomainListComponent implements Component {
   private selectedIndex: number;
@@ -53,21 +53,18 @@ export class DomainListComponent implements Component {
   }
 
   render(width: number): string[] {
-    if (this.domains.length === 0) {
-      return [truncateToWidth(this.theme.fg("dim", "No domains"), width)];
-    }
-
-    const lines: string[] = [];
-    for (let index = 0; index < this.domains.length; index++) {
-      const item = this.domains[index];
-      const isSelected = index === this.selectedIndex;
-      const marker = isSelected ? this.theme.fg("accent", "› ") : "  ";
-      const label = isSelected
-        ? this.theme.fg("accent", this.theme.bold(item.name))
-        : this.theme.fg("text", item.name);
-      lines.push(truncateToWidth(`${marker}${label}`, width));
-    }
-
-    return lines;
+    return renderLines(
+      this.domains.length === 0 &&
+        truncateToWidth(this.theme.fg("dim", "No domains"), width),
+      this.domains.length > 0 &&
+        this.domains.map((item, index) => {
+          const isSelected = index === this.selectedIndex;
+          const marker = isSelected ? this.theme.fg("accent", "› ") : "  ";
+          const label = isSelected
+            ? this.theme.fg("accent", this.theme.bold(item.name))
+            : this.theme.fg("text", item.name);
+          return truncateToWidth(`${marker}${label}`, width);
+        }),
+    );
   }
 }
