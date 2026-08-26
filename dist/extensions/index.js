@@ -4362,16 +4362,635 @@ function readAgentsSchema() {
   );
 }
 
-// extensions/components/domain-manager.ts
+// extensions/components/agent-manager.ts
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import {
   Container,
   HStack,
-  Spacer
+  Spacer,
+  Text,
+  VStack,
+  truncateToWidth as truncateToWidth3
+} from "@earendil-works/pi-tui";
+
+// extensions/components/help-line.ts
+import { truncateToWidth } from "@earendil-works/pi-tui";
+var HelpLineComponent = class {
+  constructor(theme, content) {
+    this.theme = theme;
+    this.content = content;
+  }
+  theme;
+  content;
+  invalidate() {
+  }
+  render(width) {
+    return [truncateToWidth(this.theme.fg("dim", this.content), width)];
+  }
+};
+
+// extensions/components/title.ts
+import { truncateToWidth as truncateToWidth2 } from "@earendil-works/pi-tui";
+var TitleComponent = class {
+  constructor(theme, title) {
+    this.theme = theme;
+    this.title = title;
+  }
+  theme;
+  title;
+  invalidate() {
+  }
+  render(width) {
+    return [
+      truncateToWidth2(
+        this.theme.fg("accent", this.theme.bold(this.title)),
+        width
+      )
+    ];
+  }
+};
+
+// extensions/components/agent-manager.ts
+var AgentManagerComponent = class extends Container {
+  done;
+  requestRender;
+  theme;
+  coordinators;
+  domains;
+  view;
+  rootStack;
+  leftStack;
+  rightStack;
+  currentList;
+  currentListHeader;
+  constructor(options) {
+    super();
+    this.done = options.done;
+    this.requestRender = options.requestRender;
+    this.theme = options.theme;
+    this.coordinators = options.coordinators;
+    this.domains = options.domains;
+    this.view = options.initialView ?? "coordinators";
+    this.rootStack = new VStack([], { gap: 0, align: "stretch" });
+    this.addChild(this.rootStack);
+    this.rootStack.addChild(
+      new DynamicBorder((s) => this.theme.fg("accent", s))
+    );
+    this.rootStack.addChild(new TitleComponent(this.theme, "Managing agents"));
+    this.rootStack.addChild(
+      new AgentTypeNavComponent(this.view, this.theme)
+    );
+    this.rootStack.addChild(new Spacer(1));
+    this.leftStack = new VStack([], { gap: 1, align: "stretch" });
+    this.rightStack = new VStack([], { gap: 1, align: "stretch" });
+    this.rootStack.addChild(
+      new HStack(
+        [
+          {
+            component: this.leftStack,
+            minSize: 28,
+            maxSize: 40,
+            grow: 0,
+            shrink: 1
+          },
+          {
+            component: this.rightStack,
+            minSize: 24,
+            grow: 1,
+            shrink: 1
+          }
+        ],
+        { gap: 2, align: "stretch" }
+      )
+    );
+    this.rootStack.addChild(new Spacer(1));
+    this.rootStack.addChild(
+      new HelpLineComponent(
+        this.theme,
+        "\u2191/\u2193 or j/k navigate \xB7 tab/\u2190/\u2192 switch type \xB7 c/d jump \xB7 x stop coordinator \xB7 q close"
+      )
+    );
+    this.rootStack.addChild(
+      new DynamicBorder((s) => this.theme.fg("accent", s))
+    );
+    this.refreshPanels(
+      options.initialCoordinatorIndex ?? 0,
+      options.initialDomainIndex ?? 0
+    );
+  }
+  handleInput(data) {
+    if (mapInputs(data, {
+      escape: () => this.done({ kind: "close" }),
+      q: () => this.done({ kind: "close" }),
+      c: () => this.setView("coordinators"),
+      d: () => this.setView("domains"),
+      tab: () => this.setView(
+        this.view === "coordinators" ? "domains" : "coordinators"
+      ),
+      right: () => this.setView(
+        this.view === "coordinators" ? "domains" : "coordinators"
+      ),
+      left: () => this.setView(
+        this.view === "coordinators" ? "domains" : "coordinators"
+      )
+    })) {
+      return;
+    }
+    if (this.view === "coordinators") {
+      const list = this.currentList;
+      const selected = list?.getSelected?.();
+      if (selected && selected.agent.role === "coordinator" && selected.agent.status === "running") {
+        if (mapInputs(data, {
+          x: () => this.done({
+            kind: "stop_coordinator",
+            agentId: selected.agent.id,
+            agentName: selected.agent.name,
+            selectedIndex: list?.getSelectedIndex() ?? 0
+          })
+        })) {
+          return;
+        }
+      }
+    }
+    this.currentList?.handleInput?.(data);
+  }
+  invalidate() {
+    super.invalidate();
+  }
+  setView(view) {
+    if (this.view === view) return;
+    this.view = view;
+    this.refreshPanels(
+      this.currentList?.getSelectedIndex?.() ?? 0,
+      this.currentList?.getSelectedIndex?.() ?? 0
+    );
+    this.requestRender();
+  }
+  refreshPanels(coordinatorInitialIndex, domainInitialIndex) {
+    this.leftStack.clear();
+    this.rightStack.clear();
+    if (this.currentListHeader) {
+      this.rootStack.removeChild(this.currentListHeader);
+      this.currentListHeader = void 0;
+    }
+    this.currentListHeader = new Text(
+      this.theme.fg(
+        "muted",
+        this.theme.bold(
+          this.view === "coordinators" ? "Coordinators" : "Domains"
+        )
+      )
+    );
+    this.leftStack.addChild(this.currentListHeader);
+    if (this.view === "coordinators") {
+      const list = new CoordinatorListComponent(
+        this.coordinators,
+        this.theme,
+        this.requestRender,
+        coordinatorInitialIndex
+      );
+      this.currentList = list;
+      this.leftStack.addChild(list, { grow: 1 });
+      const detail = new CoordinatorDetailComponent(
+        () => list.getSelected(),
+        this.theme
+      );
+      this.rightStack.addChild(
+        new Text(
+          this.theme.fg("muted", this.theme.bold("Coordinator details"))
+        )
+      );
+      this.rightStack.addChild(detail, { grow: 1 });
+    } else {
+      const list = new DomainListComponent(
+        this.domains,
+        this.theme,
+        this.requestRender,
+        domainInitialIndex
+      );
+      this.currentList = list;
+      this.leftStack.addChild(list, { grow: 1 });
+      const detail = new DomainDetailComponent(
+        () => list.getSelected(),
+        this.theme
+      );
+      this.rightStack.addChild(
+        new Text(
+          this.theme.fg("muted", this.theme.bold("Domain queue"))
+        )
+      );
+      this.rightStack.addChild(detail, { grow: 1 });
+    }
+  }
+};
+var AgentTypeNavComponent = class {
+  constructor(selectedView, theme) {
+    this.selectedView = selectedView;
+    this.theme = theme;
+  }
+  selectedView;
+  theme;
+  invalidate() {
+  }
+  render(width) {
+    const coordinatorsTab = this.theme.fg(
+      this.selectedView === "coordinators" ? "accent" : "dim",
+      this.selectedView === "coordinators" ? this.theme.bold("[ Coordinators ]") : "[ Coordinators ]"
+    );
+    const domainsTab = this.theme.fg(
+      this.selectedView === "domains" ? "accent" : "dim",
+      this.selectedView === "domains" ? this.theme.bold("[ Domains ]") : "[ Domains ]"
+    );
+    return [
+      truncateToWidth3(`${coordinatorsTab}    ${domainsTab}`, width)
+    ];
+  }
+};
+var CoordinatorListComponent = class {
+  constructor(coordinators, theme, requestRender, initialSelectedIndex = 0) {
+    this.coordinators = coordinators;
+    this.theme = theme;
+    this.requestRender = requestRender;
+    this.selectedIndex = Math.min(
+      Math.max(0, initialSelectedIndex),
+      Math.max(0, this.coordinators.length - 1)
+    );
+  }
+  coordinators;
+  theme;
+  requestRender;
+  selectedIndex;
+  getSelected() {
+    return this.coordinators[this.selectedIndex];
+  }
+  getSelectedIndex() {
+    return this.selectedIndex;
+  }
+  handleInput(data) {
+    const navigateUp = () => {
+      this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+      this.requestRender();
+    };
+    const navigateDown = () => {
+      this.selectedIndex = Math.min(
+        this.coordinators.length - 1,
+        this.selectedIndex + 1
+      );
+      this.requestRender();
+    };
+    mapInputs(data, {
+      up: navigateUp,
+      k: navigateUp,
+      down: navigateDown,
+      j: navigateDown
+    });
+  }
+  invalidate() {
+  }
+  render(width) {
+    if (this.coordinators.length === 0) {
+      return [truncateToWidth3(this.theme.fg("dim", "No coordinators."), width)];
+    }
+    return this.coordinators.map((data, index) => {
+      const { agent } = data;
+      const isSelected = index === this.selectedIndex;
+      const isRunning = agent.status === "running";
+      const marker = isSelected ? this.theme.fg("accent", "\u203A ") : "  ";
+      const indicator = isRunning ? this.theme.fg("accent", "\u25CF ") : "  ";
+      const noteCount = data.notes.length;
+      const suffix = noteCount > 0 ? ` \xB7 ${noteCount} note${noteCount === 1 ? "" : "s"}` : "";
+      const preview = `${agent.name}${isRunning ? "" : ` \xB7 ${agent.status}`}${agent.pid ? ` \xB7 pid ${agent.pid}` : ""}${suffix}`;
+      const label = isSelected ? this.theme.bold(preview) : preview;
+      const styled = isRunning ? this.theme.fg("text", label) : this.theme.fg("dim", label);
+      return truncateToWidth3(`${marker}${indicator}${styled}`, width);
+    });
+  }
+};
+var DomainListComponent = class {
+  constructor(domains, theme, requestRender, initialSelectedIndex = 0) {
+    this.domains = domains;
+    this.theme = theme;
+    this.requestRender = requestRender;
+    this.selectedIndex = Math.min(
+      Math.max(0, initialSelectedIndex),
+      Math.max(0, this.domains.length - 1)
+    );
+  }
+  domains;
+  theme;
+  requestRender;
+  selectedIndex;
+  getSelected() {
+    return this.domains[this.selectedIndex];
+  }
+  getSelectedIndex() {
+    return this.selectedIndex;
+  }
+  handleInput(data) {
+    const navigateUp = () => {
+      this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+      this.requestRender();
+    };
+    const navigateDown = () => {
+      this.selectedIndex = Math.min(
+        this.domains.length - 1,
+        this.selectedIndex + 1
+      );
+      this.requestRender();
+    };
+    mapInputs(data, {
+      up: navigateUp,
+      k: navigateUp,
+      down: navigateDown,
+      j: navigateDown
+    });
+  }
+  invalidate() {
+  }
+  render(width) {
+    if (this.domains.length === 0) {
+      return [truncateToWidth3(this.theme.fg("dim", "No domains."), width)];
+    }
+    return this.domains.map((data, index) => {
+      const { domain, activeCount } = data;
+      const isSelected = index === this.selectedIndex;
+      const isDimmed = activeCount === 0;
+      const marker = isSelected ? this.theme.fg("accent", "\u203A ") : "  ";
+      const indicator = activeCount > 0 ? this.theme.fg("accent", "\u25CF ") : "  ";
+      const preview = `${domain.name}${activeCount > 0 ? ` \xB7 ${activeCount} active` : ""}`;
+      const label = isSelected ? this.theme.bold(preview) : preview;
+      const styled = isDimmed ? this.theme.fg("dim", label) : label;
+      return truncateToWidth3(`${marker}${indicator}${styled}`, width);
+    });
+  }
+};
+var CoordinatorDetailComponent = class {
+  constructor(getSelected, theme) {
+    this.getSelected = getSelected;
+    this.theme = theme;
+  }
+  getSelected;
+  theme;
+  invalidate() {
+  }
+  render(width) {
+    const data = this.getSelected();
+    if (!data) {
+      return [
+        truncateToWidth3(this.theme.fg("dim", "No coordinator selected."), width)
+      ];
+    }
+    const { agent, notes } = data;
+    const lines = [
+      truncateToWidth3(this.theme.fg("accent", this.theme.bold(agent.name)), width),
+      truncateToWidth3(this.theme.fg("muted", `id:      ${agent.id}`), width),
+      truncateToWidth3(
+        this.theme.fg(
+          agent.status === "running" ? "accent" : "muted",
+          `status:  ${agent.status}${agent.status === "running" ? " (processing)" : ""}`
+        ),
+        width
+      ),
+      truncateToWidth3(
+        this.theme.fg("muted", `started: ${new Date(agent.started_at).toLocaleString()}`),
+        width
+      ),
+      "",
+      truncateToWidth3(
+        this.theme.fg("text", this.theme.bold(`Pending notes (${notes.length})`)),
+        width
+      )
+    ];
+    if (notes.length === 0) {
+      lines.push(truncateToWidth3(this.theme.fg("dim", "No pending notes."), width));
+    } else {
+      for (const note of notes) {
+        const payload = this.previewNotePayload(note);
+        lines.push(
+          truncateToWidth3(
+            this.theme.fg("muted", `from ${note.from_agent_id}`),
+            width
+          )
+        );
+        lines.push(truncateToWidth3(payload, width));
+        lines.push("");
+      }
+    }
+    return lines;
+  }
+  previewNotePayload(note) {
+    try {
+      const parsed = parseJson(note.payload);
+      return JSON.stringify(parsed).slice(0, 120);
+    } catch {
+      return String(note.payload).slice(0, 120);
+    }
+  }
+};
+var DomainDetailComponent = class {
+  constructor(getSelected, theme) {
+    this.getSelected = getSelected;
+    this.theme = theme;
+  }
+  getSelected;
+  theme;
+  invalidate() {
+  }
+  render(width) {
+    const data = this.getSelected();
+    if (!data) {
+      return [
+        truncateToWidth3(this.theme.fg("dim", "No domain selected."), width)
+      ];
+    }
+    const { domain, queueItems, domainAgents, activeCount } = data;
+    const activeAgents = domainAgents.filter(
+      (agent) => agent.status === "running"
+    );
+    const lines = [
+      truncateToWidth3(this.theme.fg("accent", this.theme.bold(domain.name)), width),
+      truncateToWidth3(this.theme.fg("muted", `id: ${domain.id}`), width),
+      "",
+      truncateToWidth3(
+        this.theme.fg(
+          "text",
+          this.theme.bold(`Queue items (${activeCount} active / ${queueItems.length} total)`)
+        ),
+        width
+      )
+    ];
+    if (queueItems.length === 0 && domainAgents.length === 0) {
+      lines.push(truncateToWidth3(this.theme.fg("dim", "No queue items or agents."), width));
+    } else {
+      for (const item of queueItems) {
+        lines.push(
+          truncateToWidth3(
+            `${item.status.toUpperCase()} \xB7 ${item.id}`,
+            width
+          )
+        );
+        lines.push(
+          truncateToWidth3(
+            this.theme.fg("muted", `  coordinator: ${item.enqueued_by_coordinator_id}`),
+            width
+          )
+        );
+        lines.push(
+          truncateToWidth3(
+            this.theme.fg("muted", `  requirement: ${item.requirement_id}${item.domain_agent_id ? ` \xB7 agent ${item.domain_agent_id}` : ""}`),
+            width
+          )
+        );
+        lines.push("");
+      }
+      if (domainAgents.length > 0) {
+        lines.push(
+          truncateToWidth3(
+            this.theme.fg(
+              "text",
+              this.theme.bold(`Domain agents (${activeAgents.length} active / ${domainAgents.length} total)`)
+            ),
+            width
+          )
+        );
+        for (const agent of domainAgents) {
+          const status = agent.status === "running" ? this.theme.fg("accent", agent.status) : this.theme.fg("dim", agent.status);
+          lines.push(
+            truncateToWidth3(
+              `${agent.name} \xB7 ${status}${agent.pid ? ` \xB7 pid ${agent.pid}` : ""}`,
+              width
+            )
+          );
+        }
+        lines.push("");
+      }
+    }
+    return lines;
+  }
+};
+
+// extensions/commands/managing-agents.ts
+function isActiveCoordinator(agent) {
+  return agent.status === "running";
+}
+function coordinatorPriority(a, b) {
+  const aActive = isActiveCoordinator(a.agent) ? 0 : 1;
+  const bActive = isActiveCoordinator(b.agent) ? 0 : 1;
+  if (aActive !== bActive) return aActive - bActive;
+  return a.agent.started_at - b.agent.started_at;
+}
+function domainPriority(a, b) {
+  if (a.activeCount > 0 && b.activeCount === 0) return -1;
+  if (a.activeCount === 0 && b.activeCount > 0) return 1;
+  return a.domain.name.localeCompare(b.domain.name);
+}
+function registerManagingAgentsCommand(pi, storage, agentManager) {
+  pi.registerCommand("managing-agents", {
+    description: "Open an interactive TUI for managing coordinators, domain agents, and queues",
+    handler: async (_args, ctx) => {
+      if (ctx.mode !== "tui") {
+        ctx.ui.notify("/managing-agents requires TUI mode", "error");
+        return;
+      }
+      let selectedView;
+      let selectedCoordinatorIndex = 0;
+      let selectedDomainIndex = 0;
+      let running = true;
+      while (running) {
+        const agents = await storage.agents.list();
+        const coordinatorAgents = agents.filter((agent) => agent.role === "coordinator").sort((a, b) => a.started_at - b.started_at);
+        const coordinators = await Promise.all(
+          coordinatorAgents.map(async (agent) => {
+            const notes = await storage.notes.listByRecipient(
+              agent.request_id,
+              agent.id
+            );
+            return { agent, notes };
+          })
+        );
+        coordinators.sort(coordinatorPriority);
+        const domains = await storage.domains.list();
+        const domainsData = await Promise.all(
+          domains.map(async (domain) => {
+            const queueItems = await storage.queue.listByDomain(domain.id);
+            const domainAgents = agents.filter(
+              (agent) => agent.role === "domain" && agent.domain_id === domain.id
+            );
+            const activeQueueCount = queueItems.filter(
+              (item) => item.status === "queued" || item.status === "running"
+            ).length;
+            const activeDomainAgents = domainAgents.filter(
+              (agent) => agent.status === "running"
+            ).length;
+            const activeCount = activeQueueCount + activeDomainAgents;
+            return { domain, queueItems, domainAgents, activeCount };
+          })
+        );
+        domainsData.sort(domainPriority);
+        selectedCoordinatorIndex = Math.min(
+          selectedCoordinatorIndex,
+          Math.max(0, coordinators.length - 1)
+        );
+        selectedDomainIndex = Math.min(
+          selectedDomainIndex,
+          Math.max(0, domainsData.length - 1)
+        );
+        const action = await ctx.ui.custom(
+          (tui, theme, _keybindings, done) => new AgentManagerComponent({
+            coordinators,
+            domains: domainsData,
+            done,
+            initialCoordinatorIndex: selectedCoordinatorIndex,
+            initialDomainIndex: selectedDomainIndex,
+            initialView: selectedView,
+            requestRender: () => tui.requestRender(),
+            theme
+          })
+        );
+        if (!action) {
+          break;
+        }
+        switch (action.kind) {
+          case "close": {
+            running = false;
+            break;
+          }
+          case "stop_coordinator": {
+            selectedCoordinatorIndex = action.selectedIndex;
+            selectedView = "coordinators";
+            const confirmed = await ctx.ui.confirm(
+              "Stop coordinator?",
+              `Send SIGTERM to "${action.agentName}" (${action.agentId})?`
+            );
+            if (confirmed) {
+              const stopped = agentManager.stopAgentProcess(action.agentId);
+              ctx.ui.notify(
+                stopped ? `Coordinator "${action.agentId}" stopping.` : `Coordinator "${action.agentId}" is not running.`,
+                stopped ? "info" : "warning"
+              );
+            }
+            break;
+          }
+          default: {
+            running = false;
+            break;
+          }
+        }
+      }
+    }
+  });
+}
+
+// extensions/components/domain-manager.ts
+import { DynamicBorder as DynamicBorder2 } from "@earendil-works/pi-coding-agent";
+import {
+  Container as Container2,
+  HStack as HStack2,
+  Spacer as Spacer2
 } from "@earendil-works/pi-tui";
 
 // extensions/components/domain-details.ts
-import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { truncateToWidth as truncateToWidth4, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 var DomainDetailsComponent = class {
   constructor(getDomain, theme) {
     this.getDomain = getDomain;
@@ -4384,27 +5003,27 @@ var DomainDetailsComponent = class {
   render(width) {
     const domain = this.getDomain();
     return renderLines(
-      !domain && truncateToWidth(this.theme.fg("dim", "No domain selected."), width),
+      !domain && truncateToWidth4(this.theme.fg("dim", "No domain selected."), width),
       domain && [
-        truncateToWidth(this.theme.fg("accent", this.theme.bold(domain.name)), width),
-        truncateToWidth(this.theme.fg("muted", `id: ${domain.id}`), width),
+        truncateToWidth4(this.theme.fg("accent", this.theme.bold(domain.name)), width),
+        truncateToWidth4(this.theme.fg("muted", `id: ${domain.id}`), width),
         "",
-        truncateToWidth(this.theme.fg("muted", "Description"), width),
+        truncateToWidth4(this.theme.fg("muted", "Description"), width),
         ...wrapTextWithAnsi(domain.description, width),
         "",
-        truncateToWidth(this.theme.fg("muted", "Remit"), width),
+        truncateToWidth4(this.theme.fg("muted", "Remit"), width),
         ...wrapTextWithAnsi(domain.remit, width),
         "",
-        truncateToWidth(this.theme.fg("muted", "Exclusions"), width),
-        domain.exclusions.length === 0 ? truncateToWidth(this.theme.fg("dim", "None"), width) : domain.exclusions.map((exclusion) => truncateToWidth(`\u2022 ${exclusion}`, width))
+        truncateToWidth4(this.theme.fg("muted", "Exclusions"), width),
+        domain.exclusions.length === 0 ? truncateToWidth4(this.theme.fg("dim", "None"), width) : domain.exclusions.map((exclusion) => truncateToWidth4(`\u2022 ${exclusion}`, width))
       ]
     );
   }
 };
 
 // extensions/components/domain-list.ts
-import { truncateToWidth as truncateToWidth2 } from "@earendil-works/pi-tui";
-var DomainListComponent = class {
+import { truncateToWidth as truncateToWidth5 } from "@earendil-works/pi-tui";
+var DomainListComponent2 = class {
   constructor(domains, initialSelectedIndex, theme, requestRender) {
     this.domains = domains;
     this.theme = theme;
@@ -4444,62 +5063,25 @@ var DomainListComponent = class {
   }
   render(width) {
     return renderLines(
-      this.domains.length === 0 && truncateToWidth2(this.theme.fg("dim", "No domains"), width),
+      this.domains.length === 0 && truncateToWidth5(this.theme.fg("dim", "No domains"), width),
       this.domains.length > 0 && this.domains.map((item, index) => {
         const isSelected = index === this.selectedIndex;
         const marker = isSelected ? this.theme.fg("accent", "\u203A ") : "  ";
         const label = isSelected ? this.theme.fg("accent", this.theme.bold(item.name)) : this.theme.fg("text", item.name);
-        return truncateToWidth2(`${marker}${label}`, width);
+        return truncateToWidth5(`${marker}${label}`, width);
       })
     );
   }
 };
 
-// extensions/components/help-line.ts
-import { truncateToWidth as truncateToWidth3 } from "@earendil-works/pi-tui";
-var HelpLineComponent = class {
-  constructor(theme, content) {
-    this.theme = theme;
-    this.content = content;
-  }
-  theme;
-  content;
-  invalidate() {
-  }
-  render(width) {
-    return [truncateToWidth3(this.theme.fg("dim", this.content), width)];
-  }
-};
-
-// extensions/components/title.ts
-import { truncateToWidth as truncateToWidth4 } from "@earendil-works/pi-tui";
-var TitleComponent = class {
-  constructor(theme, title) {
-    this.theme = theme;
-    this.title = title;
-  }
-  theme;
-  title;
-  invalidate() {
-  }
-  render(width) {
-    return [
-      truncateToWidth4(
-        this.theme.fg("accent", this.theme.bold(this.title)),
-        width
-      )
-    ];
-  }
-};
-
 // extensions/components/domain-manager.ts
-var DomainManagerComponent = class extends Container {
+var DomainManagerComponent = class extends Container2 {
   done;
   list;
   constructor(options) {
     super();
     this.done = options.done;
-    this.list = new DomainListComponent(
+    this.list = new DomainListComponent2(
       options.domains,
       options.initialSelectedIndex ?? 0,
       options.theme,
@@ -4509,16 +5091,16 @@ var DomainManagerComponent = class extends Container {
       () => this.list.getSelectedDomain(),
       options.theme
     );
-    this.addChild(new Spacer(1));
+    this.addChild(new Spacer2(1));
     this.addChild(
-      new DynamicBorder((s) => options.theme.fg("accent", s))
+      new DynamicBorder2((s) => options.theme.fg("accent", s))
     );
     this.addChild(
       new TitleComponent(options.theme, "Managing domains")
     );
-    this.addChild(new Spacer(1));
+    this.addChild(new Spacer2(1));
     this.addChild(
-      new HStack(
+      new HStack2(
         [
           {
             component: this.list,
@@ -4537,7 +5119,7 @@ var DomainManagerComponent = class extends Container {
         { gap: 1, align: "stretch" }
       )
     );
-    this.addChild(new Spacer(1));
+    this.addChild(new Spacer2(1));
     this.addChild(
       new HelpLineComponent(
         options.theme,
@@ -4545,7 +5127,7 @@ var DomainManagerComponent = class extends Container {
       )
     );
     this.addChild(
-      new DynamicBorder((s) => options.theme.fg("accent", s))
+      new DynamicBorder2((s) => options.theme.fg("accent", s))
     );
   }
   handleInput(data) {
@@ -4797,7 +5379,9 @@ function parseAgentSpawnCommand(args) {
   return { command: "pi", args };
 }
 function exitStatusFromCode(code) {
-  return code === 0 ? "completed" : "failed";
+  if (code === 0) return "completed";
+  if (code === 130 || code === 143 || code === 137) return "stopped";
+  return "failed";
 }
 function processAgentStdoutLine(line, state) {
   if (!line.trim()) return;
@@ -6184,6 +6768,7 @@ function initialiseRootMode(pi) {
     registerDeleteDomainTool(pi, storage);
     registerListDomainsTool(pi, storage);
     registerManagingDomainsCommand(pi, storage);
+    registerManagingAgentsCommand(pi, storage, agentManager);
     registerStartAgentTool(pi, agentManager);
     registerStopAgentTool(pi, agentManager);
     registerLeaveNoteTool(pi, storage, serverManager);

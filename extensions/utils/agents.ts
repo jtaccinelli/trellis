@@ -45,9 +45,17 @@ export function parseAgentSpawnCommand(args: string[]): {
 
 /**
  * Convert a child exit code into the stored agent status.
+ *
+ * Treats the common intentional stop-signal exit codes as `stopped` rather
+ * than `failed`:
+ *   - 130 = SIGINT
+ *   - 143 = SIGTERM
+ *   - 137 = SIGKILL
  */
 export function exitStatusFromCode(code: number): Agent["status"] {
-  return code === 0 ? "completed" : "failed";
+  if (code === 0) return "completed";
+  if (code === 130 || code === 143 || code === 137) return "stopped";
+  return "failed";
 }
 
 /**

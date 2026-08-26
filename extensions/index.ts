@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { SQLiteStorageAdapter } from "~/extensions/storage/index.ts";
+import { registerManagingAgentsCommand } from "~/extensions/commands/managing-agents.ts";
 import { registerManagingDomainsCommand } from "~/extensions/commands/managing-domains.ts";
 import {
   AgentEventManager,
@@ -167,6 +168,7 @@ function initialiseRootMode(pi: ExtensionAPI): void {
     registerDeleteDomainTool(pi, storage);
     registerListDomainsTool(pi, storage);
     registerManagingDomainsCommand(pi, storage);
+    registerManagingAgentsCommand(pi, storage, agentManager);
 
     // Agent lifecycle and messaging.
     registerStartAgentTool(pi, agentManager);
