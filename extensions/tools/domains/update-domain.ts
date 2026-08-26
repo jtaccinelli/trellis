@@ -5,11 +5,11 @@ import { Type } from "typebox";
 import type { Domain } from "~/extensions/storage/domains/types.ts";
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
-import { formatToolResult } from "~/extensions/utils.ts";
+import { formatToolResult } from "~/extensions/utils/index.ts";
 
-interface CreatingDomainDetails {
+interface UpdateDomainDetails {
   domain?: Domain;
-  existing?: Domain;
+  updated: boolean;
 }
 
 const parameters = Type.Object({
@@ -27,32 +27,32 @@ const parameters = Type.Object({
   }),
 });
 
-export function registerCreatingDomainTool(
+export function registerUpdateDomainTool(
   pi: ExtensionAPI,
   storage: StorageAdapter,
 ): void {
   pi.registerTool({
-    name: "creating-domain",
-    label: "Create Domain",
-    description: "Create a project domain in the Trellis taxonomy.",
+    name: "update-domain",
+    label: "Update Domain",
+    description: "Overwrite fields of an existing project domain.",
     promptSnippet:
-      "Use when the user wants to add a new domain to the project taxonomy.",
+      "Use when the user wants to change the description, remit, or exclusions of an existing domain.",
     parameters,
     async execute(_toolCallId, params) {
       const existing = await storage.domains.get(params.id);
-      if (existing) {
-        return formatToolResult<CreatingDomainDetails>(
-          `Domain "${params.id}" already exists. Choose a different identifier or update the existing domain.`,
-          { existing, domain: undefined },
+      if (!existing) {
+        return formatToolResult<UpdateDomainDetails>(
+          `Domain "${params.id}" does not exist. Create it first.`,
+          { updated: false, domain: undefined },
         );
       }
 
       const domain: Domain = { ...params };
-      await storage.domains.create(domain);
+      await storage.domains.update(domain);
 
-      return formatToolResult<CreatingDomainDetails>(
-        `Domain "${params.id}" created successfully.`,
-        { existing: undefined, domain },
+      return formatToolResult<UpdateDomainDetails>(
+        `Domain "${params.id}" updated successfully.`,
+        { domain, updated: true },
       );
     },
   });

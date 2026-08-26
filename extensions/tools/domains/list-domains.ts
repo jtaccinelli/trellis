@@ -4,20 +4,20 @@ import { Type } from "typebox";
 
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
-import { formatToolResult } from "~/extensions/utils.ts";
+import { formatToolResult } from "~/extensions/utils/index.ts";
 
-interface ListingDomainsDetails {
+interface ListDomainsDetails {
   domains: Awaited<ReturnType<StorageAdapter["domains"]["list"]>>;
 }
 
 const parameters = Type.Object({});
 
-export function registerListingDomainsTool(
+export function registerListDomainsTool(
   pi: ExtensionAPI,
   storage: StorageAdapter,
 ): void {
   pi.registerTool({
-    name: "listing-domains",
+    name: "list-domains",
     label: "List Domains",
     description: "List all defined Trellis domains.",
     promptSnippet:
@@ -26,8 +26,12 @@ export function registerListingDomainsTool(
     async execute() {
       const domains = await storage.domains.list();
 
-      return formatToolResult<ListingDomainsDetails>(
-        `${domains.length} domain(s) defined.`,
+      const summary = domains
+        .map((domain) => `- ${domain.id}: ${domain.name} — ${domain.description}`)
+        .join("\n");
+
+      return formatToolResult<ListDomainsDetails>(
+        `${domains.length} domain(s) defined.\n${summary}`,
         { domains },
       );
     },

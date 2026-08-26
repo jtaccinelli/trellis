@@ -50,12 +50,6 @@ import { registerReadNoteTool } from "~/extensions/tools/agents/read-note.ts";
 import { registerStartAgentTool } from "~/extensions/tools/agents/start-agent.ts";
 
 import { registerPublishEventTool } from "~/extensions/tools/agents/publish-event.ts";
-import { registerListWebsocketClientsTool } from "~/extensions/tools/agents/list-websocket-clients.ts";
-import { registerListQueueTool } from "~/extensions/tools/queue/list-queue.ts";
-import { registerDelegateRequirementTool } from "~/extensions/tools/scoping/delegate-requirement.ts";
-import { registerListScopeTool } from "~/extensions/tools/scoping/list-scope.ts";
-import { registerResolveConflictTool } from "~/extensions/tools/scoping/resolve-conflict.ts";
-import { registerScopeItemTool } from "~/extensions/tools/scoping/scope-item.ts";
 import {
   TRELLIS_AGENT_CLOSED,
   TRELLIS_AGENT_SETTLED,
@@ -188,9 +182,6 @@ function initialiseAgentMode(pi: ExtensionAPI): void {
   registerReadNoteTool(pi, storage);
   registerListAgentsTool(pi, storage, agentManager);
   registerPublishEventTool(pi, clientManager);
-  registerListQueueTool(pi, storage);
-  registerListScopeTool(pi, storage);
-  registerResolveConflictTool(pi, storage);
 
   pi.on("session_start", async () => {
     await storage.init();
@@ -270,15 +261,6 @@ function initialiseRootMode(pi: ExtensionAPI): void {
     registerListDomainsTool(pi, storage);
     registerManagingDomainsCommand(pi, storage);
 
-    // Planning / scoping.
-    registerScopeItemTool(pi, storage, coordinatorManager, domainManager);
-    registerDelegateRequirementTool(pi, storage, domainManager);
-    registerListScopeTool(pi, storage);
-    registerResolveConflictTool(pi, storage);
-
-    // Queue inspection.
-    registerListQueueTool(pi, storage);
-
     // Agent lifecycle and messaging.
     registerStartAgentTool(pi, agentManager);
     registerStopAgentTool(pi, agentManager);
@@ -286,7 +268,6 @@ function initialiseRootMode(pi: ExtensionAPI): void {
     registerReadNoteTool(pi, storage);
     registerListAgentsTool(pi, storage, agentManager);
     registerPublishEventTool(pi, serverManager);
-    registerListWebsocketClientsTool(pi, serverManager);
 
     ctx.ui.notify("Trellis loaded", "info");
   });

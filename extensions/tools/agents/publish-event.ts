@@ -1,5 +1,5 @@
 /**
- * Tool: publishing-event
+ * Tool: publish-event
  *
  * Publish a transient event to the Trellis WebSocket event bus. The event is
  * emitted locally on `pi.events` and forwarded to any connected agents matching
@@ -9,7 +9,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-import type { EventPublisher } from "~/extensions/managers/types.ts";
+import type { EventManager } from "~/extensions/managers/types.ts";
 import { formatToolResult } from "~/extensions/utils/index.ts";
 
 const parameters = Type.Object({
@@ -17,34 +17,34 @@ const parameters = Type.Object({
   payload: Type.Object({}, { additionalProperties: true, description: "JSON-serializable event payload" }),
   request_id: Type.Optional(Type.String({ description: "Send to every agent on this request id" })),
   target: Type.Optional(Type.String({ description: "Send only to this agent id" })),
-  broadcast: Type.Optional(Type.Boolean({ description: "Send to every connected agent except the publisher" })),
+  broadcast: Type.Optional(Type.Boolean({ description: "Send to every connected agent except the sender" })),
 });
 
-export interface PublishingEventDetails {
+export interface PublishEventDetails {
   topic: string;
   request_id?: string;
   target?: string;
   broadcast?: boolean;
 }
 
-export function registerPublishingEventTool(pi: ExtensionAPI, publisher?: EventPublisher): void {
+export function registerPublishEventTool(pi: ExtensionAPI, manager?: EventManager): void {
   pi.registerTool({
-    name: "publishing-event",
+    name: "publish-event",
     label: "Publish Event",
     description: "Publish a transient event to the Trellis WebSocket event bus.",
     parameters,
     async execute(_toolCallId, params) {
-      if (!publisher) {
+      if (!manager) {
         throw new Error("WebSocket event bus is not available in this process.");
       }
 
-      publisher.publish(params.topic, params.payload, {
+      manager.publish(params.topic, params.payload, {
         requestId: params.request_id,
         target: params.target,
         broadcast: params.broadcast,
       });
 
-      return formatToolResult<PublishingEventDetails>(
+      return formatToolResult<PublishEventDetails>(
         `Published event "${params.topic}".`,
         {
           topic: params.topic,

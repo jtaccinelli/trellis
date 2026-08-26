@@ -4,9 +4,9 @@ import { Type } from "typebox";
 
 import type { StorageAdapter } from "~/extensions/storage/types.ts";
 
-import { formatToolResult } from "~/extensions/utils.ts";
+import { formatToolResult } from "~/extensions/utils/index.ts";
 
-interface DeletingDomainDetails {
+interface DeleteDomainDetails {
   deleted: boolean;
 }
 
@@ -14,12 +14,12 @@ const parameters = Type.Object({
   id: Type.String({ description: "Stable domain identifier" }),
 });
 
-export function registerDeletingDomainTool(
+export function registerDeleteDomainTool(
   pi: ExtensionAPI,
   storage: StorageAdapter,
 ): void {
   pi.registerTool({
-    name: "deleting-domain",
+    name: "delete-domain",
     label: "Delete Domain",
     description: "Remove a project domain from the Trellis taxonomy.",
     promptSnippet:
@@ -28,13 +28,13 @@ export function registerDeletingDomainTool(
     async execute(_toolCallId, params) {
       const deleted = await storage.domains.delete(params.id);
       if (!deleted) {
-        return formatToolResult<DeletingDomainDetails>(
+        return formatToolResult<DeleteDomainDetails>(
           `Domain "${params.id}" was not found.`,
           { deleted: false },
         );
       }
 
-      return formatToolResult<DeletingDomainDetails>(
+      return formatToolResult<DeleteDomainDetails>(
         `Domain "${params.id}" deleted successfully.`,
         { deleted: true },
       );
