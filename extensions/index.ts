@@ -22,10 +22,10 @@
  */
 
 import { fileURLToPath } from "node:url";
-import path from "node:path";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import { SQLiteStorageAdapter } from "~/extensions/storage/index.ts";
 import { registerManagingDomainsCommand } from "~/extensions/commands/managing-domains.ts";
 import {
   AgentEventManager,
@@ -35,7 +35,6 @@ import {
   WebSocketServerManager,
   WebSocketClientManager,
 } from "~/extensions/managers/index.ts";
-import { SQLiteStorageAdapter } from "~/extensions/storage/index.ts";
 import {
   registerCreateDomainTool,
   registerDeleteDomainTool,
@@ -48,23 +47,10 @@ import { registerListAgentsTool } from "~/extensions/tools/agents/list-agents.ts
 import { registerLeaveNoteTool } from "~/extensions/tools/agents/leave-note.ts";
 import { registerReadNoteTool } from "~/extensions/tools/agents/read-note.ts";
 import { registerStartAgentTool } from "~/extensions/tools/agents/start-agent.ts";
-
 import { registerPublishEventTool } from "~/extensions/tools/agents/publish-event.ts";
+
 import {
-  TRELLIS_AGENT_CLOSED,
-  TRELLIS_AGENT_SETTLED,
-  TRELLIS_AGENT_SPAWNED,
-  TRELLIS_COORDINATOR_STARTED,
-  TRELLIS_COORDINATOR_UPDATED,
-  TRELLIS_NOTE_SENT,
   TRELLIS_QUEUE_ITEM_COMPLETED,
-  type TrellisAgentClosedEvent,
-  type TrellisNoteSentEvent,
-  type TrellisAgentSettledEvent,
-  type TrellisAgentSpawnedEvent,
-  type TrellisCoordinatorStartedEvent,
-  type TrellisCoordinatorUpdatedEvent,
-  type TrellisEventTopic,
   type TrellisQueueItemCompletedEvent,
 } from "~/extensions/utils/events.ts";
 
@@ -77,87 +63,10 @@ function createStorage(): SQLiteStorageAdapter {
   return new SQLiteStorageAdapter({ databasePath });
 }
 
-interface BeforeProviderHeadersEvent {
-  type: "before_provider_headers";
-  headers: Record<string, string | null>;
-}
-
-/**
- * Tag outgoing AI provider requests with Trellis agent identifiers.
- *
- * This makes it possible to inspect/filter individual requests in the
- * Cloudflare AI Gateway logs, distinguishing requests from the root process
- * from requests made by spawned subagents.
- */
-function tagProviderHeaders(pi: ExtensionAPI): void {
-  pi.on("before_provider_headers", (event: BeforeProviderHeadersEvent) => {
-    const agentId = process.env.TRELLIS_AGENT_ID ?? "trellis:root";
-    const role = process.env.TRELLIS_ROLE ?? "root";
-    const agentName = process.env.TRELLIS_AGENT_NAME;
-    const requestId = process.env.TRELLIS_REQUEST_ID;
-
-    event.headers["X-Trellis-Agent-Id"] = agentId;
-    event.headers["X-Trellis-Role"] = role;
-    if (agentName) {
-      event.headers["X-Trellis-Agent-Name"] = agentName;
-    }
-    if (requestId) {
-      event.headers["X-Trellis-Request-Id"] = requestId;
-    }
-
-    const metadataHeader = event.headers["cf-aig-metadata"];
-    if (metadataHeader) {
-      try {
-        const metadata = JSON.parse(metadataHeader);
-        event.headers["cf-aig-metadata"] = JSON.stringify({
-          ...metadata,
-          trellisAgentId: agentId,
-          trellisRole: role,
-          trellisRequestId: requestId,
-        });
-      } catch {
-        // Keep the existing header if it isn't valid JSON.
-      }
-    }
-  });
-}
-
-
-/**
- * Log a Trellis event to the root session transcript for observability.
- *
- * Used during development/testing to confirm that events published over the
- * WebSocket bus are being received by the root process. Set `triggerTurn`
- * to false so the events are displayed without causing an agent turn.
- */
-function logTrellisEvent(
-  pi: ExtensionAPI,
-  topic: TrellisEventTopic,
-  payload: unknown,
-  options?: { content?: string },
-): void {
-  const message = {
-    customType: topic,
-    content: options?.content ?? `Trellis event: ${topic}`,
-    display: true,
-    details: payload,
-  };
-  const deliverOptions = { deliverAs: "followUp" as const, triggerTurn: false as const };
-
-  // Defer so the log surfaces after the current tool turn finishes. Without
-  // this, events emitted synchronously inside a tool execute() callback can
-  // be suppressed by the in-flight assistant message.
-  setImmediate(() => {
-    pi.sendMessage(message, deliverOptions);
-  });
-}
-
 /** Set up an agent-mode Trellis process (coordinator, domain, or background). */
 function initialiseAgentMode(pi: ExtensionAPI): void {
   const extensionPath = getExtensionPath();
   const storage = createStorage();
-
-  tagProviderHeaders(pi);
 
   const clientManager = new WebSocketClientManager({
     pi,
@@ -209,8 +118,6 @@ function initialiseAgentMode(pi: ExtensionAPI): void {
 function initialiseRootMode(pi: ExtensionAPI): void {
   const extensionPath = getExtensionPath();
   const storage = createStorage();
-
-  tagProviderHeaders(pi);
 
   let serverManager: WebSocketServerManager | undefined;
   let agentManager: AgentManager | undefined;
@@ -278,63 +185,6 @@ function initialiseRootMode(pi: ExtensionAPI): void {
   pi.events.on(TRELLIS_QUEUE_ITEM_COMPLETED, async (eventPayload: unknown) => {
     const payload = eventPayload as TrellisQueueItemCompletedEvent;
     await coordinatorManager!.onQueueItemCompleted(payload);
-  });
-
-  pi.events.on(TRELLIS_AGENT_CLOSED, (eventPayload: unknown) => {
-    const payload = eventPayload as TrellisAgentClosedEvent;
-
-    const agent = payload.agent;
-    pi.sendMessage(
-      {
-        customType: TRELLIS_AGENT_CLOSED,
-        content: `Closed ${agent.role} agent "${agent.name}" (${agent.id}, mode=${agent.mode}) for request ${agent.requestId} — exit code ${payload.exitCode}.`,
-        display: true,
-        details: {
-          ...agent,
-          exitCode: payload.exitCode,
-          resultText: (payload.resultText || "").slice(0, 2000),
-        },
-      },
-      { deliverAs: "followUp", triggerTurn: false },
-    );
-  });
-
-  // Debug listeners: surface Trellis lifecycle events in the root transcript
-  // so we can verify that spawned agents are publishing them reliably.
-  pi.events.on(TRELLIS_AGENT_SPAWNED, (eventPayload: unknown) => {
-    const payload = eventPayload as TrellisAgentSpawnedEvent;
-    const agent = payload.agent;
-    logTrellisEvent(pi, TRELLIS_AGENT_SPAWNED, payload, {
-      content: `Spawned ${agent.role} agent "${agent.name}" (${agent.id}, mode=${agent.mode}) for request ${agent.requestId}.`,
-    });
-  });
-  pi.events.on(TRELLIS_AGENT_SETTLED, (eventPayload: unknown) => {
-    const payload = eventPayload as TrellisAgentSettledEvent;
-    const agent = payload.agent;
-    const resultPreview = payload.resultText
-      ? ` Result: ${payload.resultText.slice(0, 160)}${payload.resultText.length > 160 ? "…" : ""}`
-      : "";
-    logTrellisEvent(pi, TRELLIS_AGENT_SETTLED, payload, {
-      content: `Settled ${agent.role} agent "${agent.name}" (${agent.id}, mode=${agent.mode}).${resultPreview}`,
-    });
-  });
-  pi.events.on(TRELLIS_COORDINATOR_STARTED, (eventPayload: unknown) => {
-    logTrellisEvent(pi, TRELLIS_COORDINATOR_STARTED, eventPayload as TrellisCoordinatorStartedEvent);
-  });
-  pi.events.on(TRELLIS_COORDINATOR_UPDATED, (eventPayload: unknown) => {
-    logTrellisEvent(pi, TRELLIS_COORDINATOR_UPDATED, eventPayload as TrellisCoordinatorUpdatedEvent);
-  });
-  // Surface queue completion events too, in addition to routing them to the coordinator manager.
-  pi.events.on(TRELLIS_QUEUE_ITEM_COMPLETED, (eventPayload: unknown) => {
-    logTrellisEvent(pi, TRELLIS_QUEUE_ITEM_COMPLETED, eventPayload as TrellisQueueItemCompletedEvent);
-  });
-
-  // Surface durable note traffic in the root transcript.
-  pi.events.on(TRELLIS_NOTE_SENT, (eventPayload: unknown) => {
-    const payload = eventPayload as TrellisNoteSentEvent;
-    logTrellisEvent(pi, TRELLIS_NOTE_SENT, payload, {
-      content: `Note sent from ${payload.fromAgentId} to ${payload.toAgentId} in request ${payload.requestId}.`,
-    });
   });
 
   pi.on("session_shutdown", async () => {
