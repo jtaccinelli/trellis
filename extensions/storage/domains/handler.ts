@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { Domain } from "~/extensions/storage/domains/types.ts";
 import type { TableHandler, TableHandlerOptions } from "~/extensions/storage/types.ts";
 
-import { json, parseJson } from "~/extensions/utils.ts";
+import { json, parseJson } from "~/extensions/utils/index.ts";
 
 export class DomainHandler implements TableHandler<Domain> {
   readonly database: DatabaseSync;

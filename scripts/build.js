@@ -18,6 +18,20 @@ async function main() {
     tsconfig: join(rootPath, "tsconfig.json"),
   });
 
+  // Bundle the markdown agent definitions alongside the built extension. The
+  // catalog path is resolved from the plugin entry file, so agents must live
+  // in `dist/extensions/agents` to mirror the source layout.
+  const agentsSourceDirectory = join(rootPath, "extensions", "agents");
+  const agentsTargetDirectory = join(outputDirectory, "extensions", "agents");
+  mkdirSync(agentsTargetDirectory, { recursive: true });
+  for (const entry of readdirSync(agentsSourceDirectory)) {
+    if (!entry.endsWith(".md")) continue;
+    copyFileSync(
+      join(agentsSourceDirectory, entry),
+      join(agentsTargetDirectory, entry),
+    );
+  }
+
   const storageDirectory = join(rootPath, "extensions", "storage");
   for (const entry of readdirSync(storageDirectory)) {
     const schemaPath = join(storageDirectory, entry, "schema.sql");
