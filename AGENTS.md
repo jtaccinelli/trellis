@@ -2,30 +2,44 @@
 
 Trellis is a Pi extension that turns Pi’s raw subagent primitive into a structured, observable system for planning, implementing, reviewing, and deploying software work.
 
-> For coding conventions, see [`docs/80-style-guide/index.md`](./docs/80-style-guide/index.md). Add new style rules there as they emerge.
-
 ## Current intent
 
-This repo is currently **documentation-first and implementation-light**. The extension entry point (`extensions/index.ts`) is only a stub. The goal of the current phase is to:
+This repo is now **file-first**: the source files in `extensions/` and the bundled agent definitions in `extensions/agents/` are the canonical source of truth. The previous documentation tree has been removed. Read the files first, edit the files, and only write new documentation when explicitly asked.
 
-1. Finalize the architecture and workflow definitions documented in `docs/`.
-2. Map every feature to one of four user-initiated processes:
-   - **Planning** — scoping, design, item cataloguing
-   - **Implementing** — build waves, worker agents, automated QA
-   - **Reviewing** — contract validation, refinement loops, human sign-off
-   - **Deploying** — merge gate, CI, merging to `main`
-3. Implement the system incrementally, starting with the Planning/Scoping loop because it exercises all core primitives.
+The active phase is implementing the Planning/Scoping loop end-to-end:
+
+1. Recursive scoping with coordinator and domain agents.
+2. Shared per-domain FIFO queues and deterministic domain-manager execution.
+3. WebSocket-based inter-agent lifecycle events and one-to-one messages.
+4. SQLite-backed sessions, domains, requirements, work items, items, messages, and lineage.
+5. TUI overlays/reader commands for scope status and sign-off when requested.
+
+Feature work still maps to one of four user-initiated processes:
+
+- **Planning** — scoping, design, item cataloguing
+- **Implementing** — build waves, worker agents, automated QA
+- **Reviewing** — contract validation, refinement loops, human sign-off
+- **Deploying** — merge gate, CI, merging to `main`
 
 ## Architectural center of gravity
 
-- **Coordinator agents** own request context and drive the loop.
-- **Domain agents** are one-shot assessors/builders for a single work item.
-- The **extension queue manager** (not an agent) serializes domain-agent execution per domain.
+- **Coordinator agents** own request context and drive the loop. They are persistent RPC agents.
+- **Domain agents** are one-shot JSON assessors/builders for a single work item.
+- **Background agents** are one-shot JSON helpers spawned by coordinators.
+- The **extension domain manager** serializes domain-agent execution per domain via shared queues.
+- The **extension queue manager** is not an agent; it owns the FIFO queue.
 - **Shared domain queues** decouple coordinators from worker lifecycle.
+- **WebSocket event bus** carries transient lifecycle events (e.g. `trellis:agent_settled`) between spawned agents, their spawners, and the root process.
 - **Storage adapter** (SQLite default) is the source of truth for sessions, domains, requirements, work items, items, messages, and lineage.
 - Persistence in `tool_result.details` and `pi.appendEntry()` is only for transient, model-visible summaries.
 
 Extension factories distinguish **root mode** from **agent mode** via `process.env.TRELLIS_AGENT_ID`.
+
+## Agent lifecycle
+
+- Domain and background agents are launched in JSON mode, run a single turn, come to rest, publish `trellis:agent_settled` to their spawner and to `trellis:root`, then exit.
+- Coordinator agents are launched in RPC mode, stay alive across prompts, and publish `trellis:agent_settled` every time they come to rest so the spawner/root knows they are idle.
+- When an agent process exits, the parent `AgentManager` still emits the durable `trellis:agent_closed` event and updates storage as a fallback.
 
 ## Non-goals
 
@@ -36,29 +50,22 @@ Extension factories distinguish **root mode** from **agent mode** via `process.e
 
 ## How to continue work
 
-Before writing code, read or update the docs. The canonical structure is:
-
-- `docs/01-overview/index.md` — goals and status
-- `docs/10-concepts/index.md` — domain, agent, requirement, item, lineage
-- `docs/35-actions/index.md` — workflows such as cataloguing items
-- `docs/40-architecture/` — subsystems (launcher, delegation, queues, messaging, storage, rendering)
-- `docs/50-api/` — tool schemas
-- `docs/60-data-model/` — entities and SQLite schema
-- `docs/70-planning/` — roadmap, decisions, risks
-
-When adding a new feature, first add/update the relevant `docs/40-architecture/` and `docs/50-api/` pages, then implement. This keeps the design explicit and reviewable.
+1. Read the relevant files in `extensions/` before changing anything.
+2. Make the change in code first.
+3. If you add a new subsystem (manager, tool, storage handler), keep its public surface small and typed via `extensions/managers/types.ts` or `extensions/storage/types.ts`.
+4. Only create or restore docs when the user explicitly asks for them.
 
 ## First implementation priorities
 
-1. Static bundled agent catalog (`agents/*.md`) for coordinator and domain-agent.
-2. Launcher contract: spawn child `pi` processes with role env vars and system-prompt injection.
-3. Shared domain queue managed by the extension queue manager.
-4. `trellis_scope` and `trellis_delegation` tools driving the recursive scoping loop.
-5. Storage adapter interface and SQLite backend for sessions, domains, requirements, work items.
-6. TUI overlays/readers for scope status and sign-off.
+1. Stabilize the WebSocket lifecycle so agents publish `trellis:agent_settled` to their spawner and root when they come to rest.
+2. Ensure one-shot JSON agents (domain/background) exit cleanly after that event, while RPC coordinators stay alive for further input.
+3. Harden the launcher contract: env vars, prompt injection, stdout/exit capture.
+4. Finish the recursive scoping loop through `delegate-requirement`, `list-scope`, and queue completion events.
+5. Storage adapter completeness and migrations.
+6. TUI overlays/readers as needed.
 
 ## Notes for the model
 
-- Prefer editing docs before editing code while the architecture is still stabilizing.
+- Prefer reading and editing files over writing/updating documentation unless asked.
 - Keep the extension self-contained: bundled agents, bundled prompts, project-based domains.
 - Use the storage adapter as the source of truth; use `details` on tool results only for model-readable snapshots.
